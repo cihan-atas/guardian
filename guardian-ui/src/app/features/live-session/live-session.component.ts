@@ -7,6 +7,7 @@ import { FitAddon } from 'xterm-addon-fit';
 import { AuthService } from '../../core/services/auth.service';
 import { ApiClientService } from '../../core/services/api-client.service';
 import { Subscription } from 'rxjs';
+import { environment } from '../../../environments/environment'; 
 
 @Component({
   selector: 'app-live-session',
@@ -24,7 +25,7 @@ export class LiveSessionComponent implements OnInit, OnDestroy, AfterViewInit {
   private fitAddon: FitAddon;
   private routeSub: Subscription | undefined;
 
-    ws: WebSocket | null = null;
+  ws: WebSocket | null = null;
  
   public sessionId: string | null = null;
   public status = { message: 'Bağlanıyor...', color: 'orange', isLive: false };
@@ -68,7 +69,7 @@ export class LiveSessionComponent implements OnInit, OnDestroy, AfterViewInit {
     this.routeSub?.unsubscribe();
   }
   
-   updateStatus(message: string, color: 'green' | 'red' | 'orange' | 'black', isLive = false): void {
+  updateStatus(message: string, color: 'green' | 'red' | 'orange' | 'black', isLive = false): void {
     this.ngZone.run(() => {
       this.status = { message, color, isLive };
     });
@@ -88,7 +89,15 @@ export class LiveSessionComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
-    const wsURL = `wss://localhost:5555/api/ws/sessions/${this.sessionId}?role=viewer&token=${token}`;
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+
+    const host = window.location.host;
+
+    const apiPath = environment.apiUrl;
+
+    const wsURL = `${protocol}://${host}${apiPath}/ws/sessions/${this.sessionId}?role=viewer&token=${token}`;
+
+    
     this.ws = new WebSocket(wsURL);
 
     this.ws.onopen = () => {
