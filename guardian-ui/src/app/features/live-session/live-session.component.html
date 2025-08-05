@@ -1,0 +1,32 @@
+<div class="flex flex-col h-screen w-screen overflow-x-hidden font-sans bg-dark-card text-text-main">
+   <header class="bg-dark-card text-text-main p-4 shadow-md flex justify-between items-center border-b border-dark-border">
+    <h1 class="text-xl font-bold">Guardian Canlı Oturum İzleme</h1>
+    <div class="flex items-center space-x-4">
+      <div id="status-indicator" class="px-3 py-1 rounded-full text-sm shadow-lg flex items-center"
+           [ngClass]="{
+             'bg-success-900/50 text-success-300': status.color === 'green',
+             'bg-danger-900/50 text-danger-300': status.color === 'red',
+             'bg-warning-900/50 text-warning-300': status.color === 'orange',
+             'bg-dark-interactive text-text-secondary': status.color === 'black'
+           }">
+        <span class="mr-2 text-xl" [class.animate-pulse]="status.isLive">
+          {{ status.color === 'green' ? '🟢' : (status.color === 'red' ? '🔴' : (status.color === 'orange' ? '🟡' : '⚫')) }}
+        </span>
+        {{ status.message }}
+      </div>
+      <button (click)="disconnect()" [disabled]="!ws" class="bg-dark-interactive hover:bg-dark-border text-text-main font-bold py-1 px-4 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+        Durdur
+      </button>
+    </div>
+  </header>
+
+   <main class="flex-grow p-4 bg-dark-main relative">
+    <div #terminal class="h-full w-full"></div>
+  </main>
+
+   <footer class="bg-dark-card p-3 shadow-inner flex items-center justify-end border-t border-dark-border">
+    <button (click)="killSession()" [disabled]="!ws" class="bg-danger-600 hover:bg-danger-700 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+      OTURUMU ZORLA SONLANDIR
+    </button>
+  </footer>
+</div>

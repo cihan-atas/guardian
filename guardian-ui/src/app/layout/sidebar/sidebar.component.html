@@ -1,0 +1,41 @@
+<aside class="w-64 h-screen flex-shrink-0 bg-dark-card text-text-main p-4 flex flex-col z-20 relative">
+  
+  <div class="flex items-center mb-10 px-2">
+    <span class="text-3xl mr-3 text-accent">🛡️</span>
+    <h1 class="text-2xl font-semibold text-text-main">Guardian</h1>
+  </div>
+  
+  <nav class="flex flex-col space-y-2">
+    <a routerLink="/dashboard" routerLinkActive="bg-accent text-white"
+       class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
+       <fa-icon [icon]="faDashboard" class="w-5 mr-3 fa-fw"></fa-icon> Gösterge Paneli
+    </a>
+    <a routerLink="/sessions" routerLinkActive="bg-accent text-white"
+       class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
+       <fa-icon [icon]="faSessions" class="w-5 mr-3 fa-fw"></fa-icon> Oturumlar
+    </a>
+    <a routerLink="/rules" routerLinkActive="bg-accent text-white"
+       class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
+       <fa-icon [icon]="faRules" class="w-5 mr-3 fa-fw"></fa-icon> Erişim Kuralları
+    </a>
+    <a routerLink="/servers" routerLinkActive="bg-accent text-white"
+       class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
+       <fa-icon [icon]="faServers" class="w-5 mr-3 fa-fw"></fa-icon> Sunucular
+    </a>
+    <a routerLink="/users" routerLinkActive="bg-accent text-white"
+       class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
+       <fa-icon [icon]="faUsers" class="w-5 mr-3 fa-fw"></fa-icon> Kullanıcılar
+    </a>
+    <a routerLink="/keys" routerLinkActive="bg-accent text-white"
+       class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
+       <fa-icon [icon]="faKeys" class="w-5 mr-3 fa-fw"></fa-icon> SSH Anahtarları
+    </a>
+  </nav>
+
+  <div class="mt-auto">
+    <button (click)="logout()" class="group flex items-center w-full px-4 py-2.5 text-text-secondary rounded-lg hover:bg-danger-800 hover:text-white transition-colors">
+        <fa-icon [icon]="faLogout" class="w-5 mr-3 fa-fw"></fa-icon>
+        Çıkış Yap
+    </button>
+  </div>
+</aside>

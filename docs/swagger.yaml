@@ -1,0 +1,874 @@
+openapi: 3.0.0
+info:
+  title: Guardian API
+  description: "Geçici ve denetlenebilir SSH erişimi sağlayan Guardian sisteminin API dökümanı. API, bir merkezi sunucu (guardian-server) ve hedef makinelerdeki ajanlardan (guardian-agent) oluşur."
+  version: "1.3.0" # Sürüm güncellendi
+servers:
+  - url: https://localhost:5555/api
+    description: Yerel Geliştirme Sunucusu
+
+components:
+  # ------ GÜVENLİK ŞEMALARI ------
+  securitySchemes:
+    AdminBearerAuth:
+      type: http
+      scheme: bearer
+      description: "Yönetici işlemlerini yapmak için gereken JWT/Bearer token. .env dosyasındaki GUARDIAN_ADMIN_TOKEN."
+    AgentBearerAuth:
+      type: http
+      scheme: bearer
+      description: "Agent'ın sunucu ile iletişim kurmak için kullandığı paylaşımlı sır. .env dosyasındaki GUARDIAN_SECRET_TOKEN."
+
+  # ------ VERİ MODELLERİ (SCHEMAS) ------
+  schemas:
+    AuthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ok"
+
+    Server:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+          readOnly: true
+        hostname:
+          type: string
+          example: "production-web-1"
+        ip_address:
+          type: string
+          example: "192.168.1.10"
+        description:
+          type: string
+          example: "Ana web sunucusu"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-07-04T10:00:00Z"
+          readOnly: true
+
+    SystemUser:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+          readOnly: true
+        username:
+          type: string
+          example: "ec2-user"
+        description:
+          type: string
+          example: "AWS EC2 instance default user"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-07-04T10:05:00Z"
+          readOnly: true
+
+    PublicKey:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+          readOnly: true
+        key_name:
+          type: string
+          example: "devops-team-lead-key"
+        ssh_public_key:
+          type: string
+          example: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC... user@host"
+        fingerprint_sha256:
+          type: string
+          example: "SHA256:AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-07-04T10:10:00Z"
+          readOnly: true
+
+    AccessRule:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+          readOnly: true
+        server_id:
+          type: integer
+          example: 1
+        public_key_id:
+          type: integer
+          example: 1
+        system_user_id:
+          type: integer
+          example: 1
+        valid_from:
+          type: string
+          format: date-time
+          example: "2024-07-04T12:00:00Z"
+        valid_until:
+          type: string
+          format: date-time
+          example: "2024-07-04T13:00:00Z"
+        status:
+          type: string
+          example: "active" # pending, active, expired
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-07-04T11:55:00Z"
+          readOnly: true
+
+    # YENİ: Oturum listeleme için model
+    Session:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        rule_id:
+          type: integer
+          nullable: true
+        server_id:
+          type: integer
+        username:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+
+    SessionEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        session_id:
+          type: integer
+        event_type:
+          type: string
+          example: "output" # "input" veya "output"
+        data:
+          type: string
+          format: byte
+          description: "Base64 encoded terminal data"
+          example: "bHMgLWxhCg==" # "ls -la\n" in base64
+        event_time:
+          type: string
+          format: date-time
+
+    ParsedCommand:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        command:
+          type: string
+          example: "ls -la"
+        output:
+          type: string
+          example: "total 8\ndrwxr-xr-x 2 user group 4096 Jul  4 12:30 .\ndrwxr-xr-x 5 user group 4096 Jul  4 12:00 .."
+
+    SessionDetails:
+      type: object
+      properties:
+        session_info:
+          type: object
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+            server_hostname:
+              type: string
+            server_ip:
+              type: string
+            start_time:
+              type: string
+              format: date-time
+            end_time:
+              type: string
+              format: date-time
+              nullable: true
+            status:
+              type: string
+        commands:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParsedCommand'
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Hata mesajı burada yer alır."
+
+# ------ YOLLAR (PATHS) ------
+paths:
+  # ------ Yetkilendirme Kontrolü ------
+  /auth/check:
+    get:
+      tags: [Authentication]
+      summary: Bir yönetici token'ının geçerliliğini kontrol et
+      description: Bu endpoint, genellikle UI'ın başlangıçta kullanıcının hala login olup olmadığını anlaması için kullanılır. Başarılı yanıt (200 OK), token'ın geçerli olduğunu gösterir.
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Token geçerli.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthStatus'
+        '401':
+          description: Yetkisiz (Token eksik veya geçersiz)
+        '403':
+          description: Yetkisiz (Token geçersiz)
+
+  # ------ Sunucu Yönetimi ------
+  /servers:
+    get:
+      tags: [Server Management]
+      summary: Tüm sunucuları listele
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Başarılı yanıt
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Server'
+        '401':
+          description: Yetkisiz (Token eksik veya geçersiz)
+    post:
+      tags: [Server Management]
+      summary: Yeni bir sunucu oluştur
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hostname:
+                  type: string
+                  example: "staging-db-1"
+                ip_address:
+                  type: string
+                  example: "10.0.0.5"
+                description:
+                  type: string
+                  example: "Staging veritabanı sunucusu"
+      responses:
+        '201':
+          description: Sunucu başarıyla oluşturuldu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        '400':
+          description: Geçersiz istek gövdesi
+
+  /servers/{serverID}:
+    parameters:
+      - name: serverID
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [Server Management]
+      summary: Belirli bir sunucuyu getir
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Başarılı yanıt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        '404':
+          description: Sunucu bulunamadı
+    put:
+      tags: [Server Management]
+      summary: Bir sunucuyu tamamen güncelle
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Server'
+      responses:
+        '200':
+          description: Başarıyla güncellendi
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Sunucu 1 başarıyla güncellendi."
+        '404':
+          description: Sunucu bulunamadı
+    patch:
+      tags: [Server Management]
+      summary: Bir sunucuyu kısmen güncelle
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                  example: "Staging veritabanı (PostgreSQL 14)"
+      responses:
+        '200':
+          description: Başarıyla güncellendi
+        '404':
+          description: Sunucu bulunamadı
+    delete:
+      tags: [Server Management]
+      summary: Bir sunucuyu sil
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '204':
+          description: Başarıyla silindi (içerik yok)
+        '404':
+          description: Sunucu bulunamadı
+        '409':
+          description: "Çakışma. Sunucu, bir veya daha fazla erişim kuralı tarafından kullanıldığı için silinemiyor."
+
+  # ------ Kullanıcı Yönetimi ------
+  /users:
+    get:
+      tags: [User Management]
+      summary: Tüm sistem kullanıcılarını listele
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Başarılı yanıt
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SystemUser'
+    post:
+      tags: [User Management]
+      summary: Yeni bir sistem kullanıcısı tanımla
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  example: "root"
+                description:
+                  type: string
+                  example: "Süper kullanıcı"
+      responses:
+        '201':
+          description: Kullanıcı oluşturuldu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemUser'
+
+  /users/{userID}:
+    parameters:
+      - name: userID
+        in: path
+        required: true
+        description: İşlem yapılacak kullanıcının ID'si
+        schema:
+          type: integer
+    get:
+      tags: [User Management]
+      summary: Belirli bir sistem kullanıcısını getir
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Başarılı yanıt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemUser'
+        '404':
+          description: Kullanıcı bulunamadı
+    patch:
+      tags: [User Management]
+      summary: Bir sistem kullanıcısını kısmen güncelle
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        description: "Güncellenecek alanları içeren JSON objesi. Şu anda sadece 'description' desteklenmektedir."
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                  example: "Root kullanıcısı - sadece acil durumlarda kullanılmalı"
+      responses:
+        '200':
+          description: Kullanıcı başarıyla güncellendi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemUser'
+        '400':
+          description: Geçersiz istek gövdesi
+        '404':
+          description: Kullanıcı bulunamadı
+    delete:
+      tags: [User Management]
+      summary: Bir sistem kullanıcısını sil
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '204':
+          description: Kullanıcı başarıyla silindi (İçerik yok)
+        '404':
+          description: Silinecek kullanıcı bulunamadı
+        '409':
+          description: "Çakışma. Kullanıcı, bir veya daha fazla erişim kuralı tarafından kullanıldığı için silinemiyor."
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Kullanıcı silinemiyor. Bu kullanıcı 1 adet kural tarafından kullanılıyor. Lütfen önce ilgili kuralları silin."
+
+  # ------ Anahtar Yönetimi ------
+  /keys:
+    get:
+      tags: [Key Management]
+      summary: Tüm public anahtarları listele
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Başarılı yanıt
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublicKey'
+    post:
+      tags: [Key Management]
+      summary: Yeni bir public anahtar kaydet
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key_name:
+                  type: string
+                  example: "jane-doe-laptop-key"
+                ssh_public_key:
+                  type: string
+                  example: "ssh-ed25519 AAAAC3... jane.doe@example.com"
+      responses:
+        '201':
+          description: Anahtar oluşturuldu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicKey'
+
+  /keys/{keyID}:
+    parameters:
+      - name: keyID
+        in: path
+        required: true
+        description: İşlem yapılacak anahtarın ID'si
+        schema:
+          type: integer
+    get:
+      tags: [Key Management]
+      summary: Belirli bir public anahtarı getir
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Başarılı yanıt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicKey'
+        '404':
+          description: Anahtar bulunamadı
+    patch:
+      tags: [Key Management]
+      summary: Bir public anahtarın adını güncelle
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key_name:
+                  type: string
+                  example: "jane-doe-new-laptop-key"
+      responses:
+        '200':
+          description: Başarıyla güncellendi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicKey'
+        '404':
+          description: Anahtar bulunamadı
+    delete:
+      tags: [Key Management]
+      summary: Bir public anahtarı sil
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '204':
+          description: Anahtar başarıyla silindi (İçerik yok)
+        '404':
+          description: Silinecek anahtar bulunamadı
+        '409':
+          description: "Çakışma. Anahtar, bir veya daha fazla erişim kuralı tarafından kullanıldığı için silinemiyor."
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Anahtar silinemiyor. Bu anahtar 1 adet aktif/bekleyen kural tarafından kullanılıyor. Lütfen önce ilgili kuralları silin."
+
+  # ------ Kural Yönetimi ------
+  /rules:
+    get:
+      tags: [Rule Management]
+      summary: Tüm erişim kurallarını listele
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Başarılı yanıt
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccessRule'
+    post:
+      tags: [Rule Management]
+      summary: Yeni bir erişim kuralı oluştur
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                server_id:
+                  type: integer
+                  example: 1
+                public_key_id:
+                  type: integer
+                  example: 1
+                system_user_id:
+                  type: integer
+                  example: 1
+                valid_from:
+                  type: string
+                  format: date-time
+                  example: "2024-07-04T15:00:00Z"
+                valid_until:
+                  type: string
+                  format: date-time
+                  example: "2024-07-04T16:00:00Z"
+      responses:
+        '201':
+          description: Kural oluşturuldu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessRule'
+
+  /rules/{ruleID}:
+    parameters:
+      - name: ruleID
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [Rule Management]
+      summary: Belirli bir kuralı getir
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Başarılı yanıt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessRule'
+        '404':
+          description: Kural bulunamadı
+    put:
+      tags: [Rule Management]
+      summary: Bir kuralı tamamen güncelle
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessRule'
+      responses:
+        '200':
+          description: Başarıyla güncellendi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessRule'
+    patch:
+      tags: [Rule Management]
+      summary: Bir kuralı kısmen güncelle
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: "expired"
+      responses:
+        '200':
+          description: Başarıyla güncellendi
+    delete:
+      tags: [Rule Management]
+      summary: Bir kuralı sil
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '204':
+          description: Başarıyla silindi
+        '404':
+          description: Kural bulunamadı
+        '503':
+          description: Agent'a erişilemedi, kural silinemedi.
+
+  # ------ Oturum Yönetimi ------
+  /sessions:
+    get:
+      tags: [Session Management]
+      summary: Tüm oturumları listele
+      description: Sistemdeki geçmiş ve aktif tüm oturumların bir listesini döndürür.
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Başarılı yanıt, oturumların listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Session'
+        '401':
+          description: Yetkisiz
+    post:
+      tags: [Session Management]
+      summary: Yeni bir oturum başlat (Agent tarafından kullanılır)
+      security:
+        - AgentBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rule_id:
+                  type: integer
+                  example: 1
+                server_id:
+                  type: integer
+                  example: 1
+                username:
+                  type: string
+                  example: "ec2-user"
+      responses:
+        '201':
+          description: Oturum oluşturuldu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 42
+                  valid_until:
+                    type: string
+                    format: date-time
+                    nullable: true
+
+  /sessions/{sessionID}:
+    parameters:
+      - name: sessionID
+        in: path
+        required: true
+        schema:
+          type: integer
+    patch:
+      tags: [Session Management]
+      summary: Oturum durumunu güncelle (Agent tarafından kullanılır)
+      security:
+        - AgentBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: "ended" # "ended" veya "timed_out"
+      responses:
+        '200':
+          description: Oturum güncellendi
+    delete:
+      tags: [Session Management]
+      summary: Aktif bir oturumu zorla sonlandır (Yönetici tarafından kullanılır)
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Sonlandırma komutu gönderildi
+        '404':
+          description: Aktif oturum bulunamadı
+
+  /sessions/{sessionID}/replay:
+    get:
+      tags: [Session Management]
+      summary: Bir oturumun tekrarını al
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Oturum olaylarının listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SessionEvent'
+        '404':
+          description: Oturum bulunamadı
+
+  /sessions/{sessionID}/commands:
+    get:
+      tags: [Session Management]
+      summary: Oturumdaki komutları ayrıştırılmış al
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Oturum detayları ve komut listesi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDetails'
+        '404':
+          description: Oturum bulunamadı
+
+  # ------ WebSocket ------
+  /ws/sessions/{sessionID}:
+    get:
+      tags: [WebSocket Stream]
+      summary: Oturum veri akışı için WebSocket bağlantısı
+      description: |
+        Bu bir WebSocket endpoint'idir. HTTP isteği, WebSocket protokolüne yükseltilir.
+        - **Agent Kullanımı:** Herhangi bir query parametresi olmadan bağlanır. `Authorization: Bearer <AGENT_SECRET_TOKEN>` başlığı GEREKLİDİR.
+        - **Yönetici Kullanımı (Canlı İzleme):** `?role=viewer&token=<ADMIN_TOKEN>` query parametreleri ile bağlanılır. `Authorization` başlığı GEREKMEZ.
+      parameters:
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [viewer]
+          description: "Yönetici canlı izleme modunu aktive etmek için 'viewer' olarak ayarlanmalıdır."
+        - name: token
+          in: query
+          schema:
+            type: string
+          description: "Yönetici token'ı (role=viewer ise gereklidir)."
+      responses:
+        '101':
+          description: WebSocket bağlantısı başarıyla kuruldu.
+        '400':
+          description: Geçersiz Oturum ID'si.
+        '401':
+          description: "Yönetici token'ı eksik veya geçersiz (role=viewer ise)."

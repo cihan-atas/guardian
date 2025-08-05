@@ -1,0 +1,50 @@
+@use 'ngx-toastr/toastr'; 
+@use 'tailwindcss/base';
+@use 'tailwindcss/components';
+@use 'tailwindcss/utilities';
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+
+// HTML ve Body için varsayılan karanlık tema renklerini uygula.
+html, body {
+  @apply bg-dark-main text-text-main;
+  overflow-x: hidden;
+}
+
+// Karanlık tema için Toastr bildirimlerini özelleştir.
+:root {
+  --toast-background: #21262d;
+  --toast-text-color: #c9d1d9;
+  --toast-border-color: #30363d;
+  --toast-success-color: #3fb950;
+  --toast-error-color: #f85149;
+  --toast-warning-color: #d29922;
+  --toast-info-color: #2f81f7;
+}
+
+// ngx-toastr'ın varsayılan renklerini ezelim.
+.toast-success {
+  background-color: var(--toast-success-color) !important;
+  color: white !important;
+}
+.toast-error {
+  background-color: var(--toast-error-color) !important;
+  color: white !important;
+}
+.toast-warning {
+  background-color: var(--toast-warning-color) !important;
+  color: #161b22 !important; // Koyu renkli metin daha okunaklı olur.
+}
+.toast-info {
+  background-color: var(--toast-info-color) !important;
+  color: white !important;
+}
+
+// ngx-charts'ın karanlık tema metin renklerini düzelt
+.ngx-charts-dark {
+  // Eksen etiketleri, legend yazıları vb. için
+  .ngx-charts text, .chart-legend .legend-label-text {
+    fill: #8b949e !important; // text-secondary rengimiz
+  }
+}
+

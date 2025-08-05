@@ -1,0 +1,107 @@
+<div class="flex justify-between items-center mb-8">
+  <div>
+    <h1 class="text-3xl font-bold text-text-main">SSH Public Anahtarları</h1>
+    <p class="mt-1 text-text-secondary">Erişim kurallarında kullanılacak genel SSH anahtarları.</p>
+  </div>
+  <button (click)="openModal()" class="flex items-center bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
+    <fa-icon [icon]="faPlus" class="mr-2"></fa-icon>
+    <span>Yeni Anahtar Ekle</span>
+  </button>
+</div>
+
+ <div *ngIf="isLoading" class="text-center text-text-secondary py-10"><p>Veriler yükleniyor...</p></div>
+<div *ngIf="error" class="bg-danger-900 border border-danger-700 text-danger-200 px-4 py-3 rounded" role="alert">
+  <strong class="font-bold">Hata!</strong> <span class="block sm:inline">{{ error }}</span>
+</div>
+
+ <div *ngIf="!isLoading && !error" class="bg-dark-card shadow-md rounded-lg overflow-x-auto border border-dark-border">
+  <table class="min-w-full leading-normal">
+    <thead>
+      <tr>
+        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">ID</th>
+        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">Anahtar Adı</th>
+        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">Parmak İzi (SHA256)</th>
+        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">İşlemler</th>
+      </tr>
+    </thead>
+    <tbody>
+       <tr *ngIf="keys.length === 0 && !isLoading">
+        <td colspan="4">
+          <div class="text-center py-12 px-6">
+            <fa-icon [icon]="faKey" class="text-5xl text-text-secondary opacity-50"></fa-icon>
+            <h3 class="mt-4 text-lg font-medium text-text-main">Kayıtlı SSH Anahtarı Bulunamadı</h3>
+            <p class="mt-1 text-sm text-text-secondary">Kullanıcıların sunuculara erişmek için kullanacağı anahtarları buradan ekleyin.</p>
+            <button (click)="openModal()" class="mt-6 flex mx-auto items-center bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow-sm">
+              <fa-icon [icon]="faPlus" class="mr-2"></fa-icon>
+              <span>Yeni Anahtar Ekle</span>
+            </button>
+          </div>
+        </td>
+      </tr>
+       <tr *ngFor="let key of keys" class="hover:bg-dark-interactive">
+        <td class="px-5 py-5 border-b border-dark-border text-sm">{{ key.id }}</td>
+        <td class="px-5 py-5 border-b border-dark-border text-sm font-medium">{{ key.key_name }}</td>
+        <td class="px-5 py-5 border-b border-dark-border text-sm font-mono text-text-secondary">{{ key.fingerprint_sha256 }}</td>
+        <td class="px-5 py-5 border-b border-dark-border text-sm whitespace-nowrap">
+          
+           <ng-container *ngIf="!key.key_name.startsWith('example-')">
+            <button (click)="openModal(key)" class="text-accent hover:text-accent-hover transition-colors font-semibold mr-4">Düzenle</button>
+            <button (click)="onDeleteKey(key)" class="text-danger-500 hover:text-danger-400 transition-colors font-semibold">Sil</button>
+          </ng-container>
+          
+           <ng-container *ngIf="key.key_name.startsWith('example-')">
+            <span class="px-2 py-1 text-xs font-medium text-text-secondary bg-dark-interactive rounded-full">
+              Örnek Kayıt
+            </span>
+          </ng-container>
+
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+   <div *ngIf="totalRecords > 0" class="px-5 py-3 border-t border-dark-border flex flex-col xs:flex-row items-center xs:justify-between">
+    <span class="text-xs xs:text-sm text-text-main">
+      Toplam {{ totalRecords }} kayıttan {{ keys.length }} tanesi gösteriliyor.
+    </span>
+    <div class="inline-flex mt-2 xs:mt-0">
+      <button (click)="prevPage()" [disabled]="currentPage === 1"
+              class="text-sm bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-l disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+        Önceki
+      </button>
+      <span class="text-sm bg-dark-main font-semibold py-2 px-4 text-text-secondary border-t border-b border-dark-border">
+        Sayfa {{ currentPage }} / {{ totalPages }}
+      </span>
+      <button (click)="nextPage()" [disabled]="currentPage === totalPages || totalPages === 0"
+              class="text-sm bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-r disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+        Sonraki
+      </button>
+    </div>
+  </div>
+</div>
+
+ <div *ngIf="isModalOpen" class="fixed inset-0 bg-black bg-opacity-70 z-40 flex justify-center items-center" (click)="closeModal()">
+  <div class="bg-dark-card rounded-lg shadow-2xl p-8 w-full max-w-lg relative z-50 animate-fade-in border border-dark-border" (click)="$event.stopPropagation()">
+    <h2 class="text-2xl font-bold mb-6 text-text-main">
+      {{ isEditMode ? 'Anahtarı Düzenle' : 'Yeni SSH Public Anahtarı Ekle' }}
+    </h2>
+    <form [formGroup]="keyForm" (ngSubmit)="onSubmit()">
+      <div class="space-y-6">
+        <div>
+          <label for="key_name" class="block text-sm font-medium text-text-secondary">Anahtar Adı</label>
+          <input type="text" id="key_name" formControlName="key_name" class="mt-1 block w-full p-2 bg-dark-main border border-dark-border rounded-md shadow-sm focus:ring-accent focus:border-accent sm:text-sm text-text-main" placeholder="ornek: development-team-key">
+        </div>
+        <div *ngIf="!isEditMode">
+          <label for="ssh_public_key" class="block text-sm font-medium text-text-secondary">Public Anahtar İçeriği</label>
+          <textarea id="ssh_public_key" formControlName="ssh_public_key" rows="5" class="mt-1 block w-full p-2 bg-dark-main border border-dark-border rounded-md shadow-sm font-mono text-sm focus:ring-accent focus:border-accent text-text-main" placeholder="ssh-rsa AAA..."></textarea>
+        </div>
+      </div>
+      <div class="mt-8 pt-6 border-t border-dark-border flex justify-end space-x-3">
+        <button type="button" (click)="closeModal()" class="bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-lg border border-dark-border transition-colors">İptal</button>
+        <button type="submit" [disabled]="keyForm.invalid" class="bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+          {{ isEditMode ? 'Değişiklikleri Kaydet' : 'Anahtarı Oluştur' }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

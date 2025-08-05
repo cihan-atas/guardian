@@ -1,0 +1,94 @@
+package agentclient
+
+import (
+	"bytes"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"time"
+
+	"guardian.com/server/models"
+)
+
+type Client struct {
+	httpClient  *http.Client
+	agentPort   string
+	secretToken string
+}
+
+func New(agentPort, secretToken, caCertFile string) *Client {
+	caCert, err := ioutil.ReadFile(caCertFile)
+	if err != nil {
+		log.Fatalf("FATAL: CA sertifikası okunamadı (%s): %v", caCertFile, err)
+	}
+
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	tlsConfig := &tls.Config{
+		RootCAs: caCertPool,
+	}
+
+	transport := &http.Transport{TLSClientConfig: tlsConfig}
+
+	return &Client{
+		httpClient: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: transport,
+		},
+		agentPort:   agentPort,
+		secretToken: secretToken,
+	}
+}
+
+func (c *Client) sendCommand(ip, action string, payload interface{}) error {
+	endpoint := fmt.Sprintf("https://%s:%s/actions/%s", ip, c.agentPort, action)
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("payload JSON'a çevrilemedi: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("istek oluşturulamadı: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.secretToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("agent'a istek gönderilemedi: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("agent beklenmeyen durum kodu döndü: %s", resp.Status)
+	}
+
+	log.Printf("✅ Agent'a komut başarıyla gönderildi: Host: %s, Aksiyon: %s", ip, action)
+	return nil
+}
+
+func (c *Client) SendKeyCommand(ip, action string, payload models.KeyPayload) error {
+	actionEndpoint := fmt.Sprintf("%s-key", action)
+	log.Printf("    => Agent'a anahtar komutu gönderiliyor: Host: %s, Aksiyon: %s, Kullanıcı: %s", ip, action, payload.Username)
+	return c.sendCommand(ip, actionEndpoint, payload)
+}
+
+func (c *Client) TerminateSession(ip string, sessionID int) error {
+	payload := map[string]int{"session_id": sessionID}
+	log.Printf("    => Agent'a oturum sonlandırma komutu gönderiliyor: Host: %s, SessionID: %d", ip, sessionID)
+	return c.sendCommand(ip, "terminate-session", payload)
+}
+
+func (c *Client) ValidateUser(ip, username string) error {
+	log.Printf("    => Agent'a kullanıcı doğrulama isteği gönderiliyor: Host: %s, Kullanıcı: %s", ip, username)
+	payload := map[string]string{"username": username}
+	return c.sendCommand(ip, "validate-user", payload)
+}

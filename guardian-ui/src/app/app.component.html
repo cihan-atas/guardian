@@ -1,0 +1,8 @@
+<div *ngIf="(isAuthenticated$ | async) && !(isFullScreen$ | async)" class="flex min-h-screen bg-dark-main">
+  <app-sidebar></app-sidebar>
+  <main class="flex-1 overflow-y-auto p-10 border-l border-dark-border">
+    <router-outlet></router-outlet>
+  </main>
+</div>
+ 
+<router-outlet *ngIf="!(isAuthenticated$ | async) || (isFullScreen$ | async)"></router-outlet>

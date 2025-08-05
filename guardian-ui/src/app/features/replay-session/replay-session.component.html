@@ -1,0 +1,39 @@
+<div class="flex flex-col h-screen w-full font-sans bg-dark-card text-text-main">
+   <header class="bg-dark-card text-text-main p-4 shadow-md flex justify-between items-center border-b border-dark-border">
+    <h1 class="text-xl font-bold">Guardian Oturum Tekrar Oynatma (ID: {{ sessionId }})</h1>
+    <button (click)="loadSession()" class="bg-accent hover:bg-accent-hover text-white font-bold py-1 px-4 rounded transition-colors">Yeniden Yükle</button>
+  </header>
+
+   <main class="flex-grow p-4 bg-dark-main">
+    <div #terminal class="h-full w-full"></div>
+  </main>
+
+   <footer class="bg-dark-card p-3 shadow-inner flex items-center justify-between space-x-4 border-t border-dark-border">
+    <div class="flex items-center space-x-4">
+       <button (click)="player.isPlaying ? pause() : play()" [disabled]="!player.isLoaded" title="Oynat/Duraklat" class="w-10 h-10 flex items-center justify-center text-xl text-text-secondary hover:text-text-main disabled:opacity-50 transition-colors">
+        <fa-icon *ngIf="!player.isPlaying" [icon]="faPlay"></fa-icon>
+        <fa-icon *ngIf="player.isPlaying" [icon]="faPause"></fa-icon>
+      </button>
+      <button (click)="restart()" [disabled]="!player.isLoaded" title="Yeniden Başlat" class="w-10 h-10 flex items-center justify-center text-xl text-text-secondary hover:text-text-main disabled:opacity-50 transition-colors">
+        <fa-icon [icon]="faRedo"></fa-icon>
+      </button>
+     </div>
+    
+    <div class="flex-grow flex items-center mx-4">
+      <span class="text-xs mr-2 w-12 text-right text-text-secondary">{{ player.currentTime }}</span>
+      <input type="range" [(ngModel)]="player.progress" (input)="onProgressChange($event)" class="w-full h-2 bg-dark-interactive rounded-lg appearance-none cursor-pointer accent-accent" min="0" max="100" step="0.1" [disabled]="!player.isLoaded">
+      <span class="text-xs ml-2 w-12 text-text-secondary">{{ player.totalTime }}</span>
+    </div>
+
+    <div class="flex items-center space-x-2">
+      <label for="speedControl" class="text-sm text-text-secondary">Hız:</label>
+      <select [(ngModel)]="player.playbackSpeed" class="bg-dark-main text-text-main px-2 py-1 rounded border border-dark-border disabled:opacity-50" [disabled]="!player.isLoaded">
+        <option [ngValue]="0.5">0.5x</option>
+        <option [ngValue]="1">1x (Normal)</option>
+        <option [ngValue]="2">2x</option>
+        <option [ngValue]="4">4x</option>
+        <option [ngValue]="8">8x</option>
+      </select>
+    </div>
+  </footer>
+</div>
