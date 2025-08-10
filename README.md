@@ -1,350 +1,137 @@
-<<<<<<< HEAD
-# guardian
-=======
-# Guardian Dağıtık Mimarisi Kurulum Rehberi
+# 🛡 Guardian: Geçici ve Denetlenebilir SSH Erişim Yönetimi
 
-Bu rehber, Guardian uygulamasının iki farklı sunucu üzerinde (`Ana Sunucu` ve `Agent Sunucusu`) nasıl kurulacağını, yapılandırılacağını ve `systemd` servisleri olarak nasıl yönetileceğini adım adım açıklar.
+**Guardian**, modern altyapılar için tasarlanmış, **geçici ve denetlenebilir SSH erişimi sağlayan** açık kaynaklı bir Ayrıcalıklı Erişim Yönetimi (Privileged Access Management - PAM) çözümüdür.
 
-## Mimariye Genel Bakış
+## 🎯 Guardian Hangi Sorunu Çözüyor?
 
-*   **Ana Sunucu (PC 1):** Projenin merkezi bileşenlerini barındırır.
-    *   `PostgreSQL`: Docker container'ı içinde çalışan veritabanı.
-    *   `guardian-server`: Kullanıcı arayüzü ve ajanlarla iletişim kuran ana backend uygulaması.
-    *   `guardian-ui`: Nginx tarafından sunulan Angular tabanlı web arayüzü.
-*   **Agent Sunucusu (PC 2):** Hedef sunucularda çalışan ve `guardian-server`'dan komut alan ajan.
-    *   `guardian-agent`: SSH proxy'si ve komut dinleyicisi.
+Geleneksel sistemlerde, sunuculara SSH erişimi genellikle kalıcı `authorized_keys` dosyaları üzerinden sağlanır. Bu yaklaşım, aşağıdaki gibi ciddi güvenlik riskleri ve operasyonel zorluklar yaratır:
 
----
+*   **Kalıcı Yetkiler:** Bir çalışanın SSH anahtarı bir sunucuya eklendiğinde, bu anahtar manuel olarak kaldırılana kadar erişim devam eder. Çalışan ekipten ayrıldığında veya görevi değiştiğinde, anahtarının tüm sunuculardan temizlenmesi karmaşık ve hataya açık bir süreçtir.
+*   **Denetim Eksikliği:** Kimin, ne zaman, hangi sunucuya bağlandığını ve oturum sırasında hangi komutları çalıştırdığını merkezi olarak takip etmek zordur.
+*   **"Paylaşılan Anahtar" Problemi:** Bir ekibin ortak kullandığı bir SSH anahtarının (örneğin, `dev-team.pem`) sızdırılması, tüm altyapıyı riske atar.
 
-## 1. Ortak Ön Hazırlık Adımları (Her İki Sunucuda da Uygulanacak)
+**Guardian**, bu sorunları çözmek için tasarlanmıştır. Statik SSH anahtarları yerine, **"Just-in-Time" (Tam Zamanında) erişim prensibini** benimser. Yöneticiler, belirli bir görev için, belirli bir kullanıcıya, belirli bir sunucuya ve **sadece belirli bir süre için** geçerli olan erişim kuralları tanımlar. Süresi dolan erişim hakları, hiçbir manuel müdahaleye gerek kalmadan sistemden otomatik olarak kaldırılır.
 
-Bu adımlar hem Ana Sunucu'da hem de Agent Sunucusu'nda gerçekleştirilmelidir.
+[](https://i.imgur.com/eTjWq9m.png)
+_Guardian'ın modern web arayüzü, sisteminize 360 derece bir bakış sunar._
 
-### 1.1. `guardian` Kullanıcısı ve Grubu Oluşturma
+## ✨ Temel Özellikler
 
-Servisleri `root` yerine daha az yetkili bir kullanıcı ile çalıştırarak güvenliği artırıyoruz.
+*   **Geçici Erişim Kuralları:** Sunuculara `15 dakika`, `2 saat` veya `1 gün` gibi belirli sürelerle sınırlı erişim yetkileri tanımlayın. Süresi dolan kurallar otomatik olarak devre dışı bırakılır.
+*   **Merkezi Yönetim:** Tüm sunucuları, sistem kullanıcılarını, genel SSH anahtarlarını ve erişim kurallarını tek bir web arayüzünden veya CLI üzerinden yönetin.
+*   **Oturum Kaydı ve Tekrar Oynatma:** Tüm SSH oturumları kaydedilir. Tamamlanmış oturumları **video gibi tekrar oynatarak** yapılan tüm işlemleri denetleyin.
+*   **Canlı Oturum İzleme:** Aktif SSH oturumlarına anında bağlanarak **canlı olarak izleyin** ve şüpheli durumlarda oturumu zorla sonlandırın.
+*   **Detaylı API Dokümantasyonu:** Tüm API endpoint'leri, `docs/swagger.yaml` dosyasında OpenAPI 3.0 standardında belgelenmiştir.
+*   **Komut Satırı Aracı (CLI):** Güçlü ve interaktif CLI ile tüm sistemi otomasyon betiklerinize entegre edin veya komut satırından yönetin.
+*   **Güvenlik Odaklı Mimari:** Tüm bileşenler arası iletişim, kendi Kök Sertifika Otoriteniz (Root CA) ile imzaladığınız TLS sertifikalarıyla uçtan uca şifrelenir.
+*   **Modern ve Hızlı Arayüz:** Angular ve TailwindCSS ile oluşturulmuş, anlık veriler sunan reaktif bir web arayüzü.
+
+## 🏛️ Mimari
+
+Guardian, birbirinden bağımsız ama entegre çalışan dört ana bileşenden oluşur:
+
+1.  **Guardian Server (Go):** Projenin beyni. API'yi sunar, veritabanını yönetir, zamanlanmış görevleri çalıştırır ve ajanlarla iletişim kurar.
+2.  **Guardian UI (Angular):** Yöneticilerin sistemi yönettiği, oturumları izlediği ve raporları gördüğü web tabanlı arayüz.
+3.  **Guardian Agent (Go):** Yönetilen hedef sunucularda çalışan hafif ajan. `authorized_keys` dosyasını dinamik olarak yönetir ve SSH oturumlarını proxy'leyerek kaydeder.
+4.  **Guardian CLI (Go):** Yöneticiler için tasarlanmış, komut satırından sistemi yönetmeyi sağlayan araç.
+
+ _(Buraya mimari şemasının bir görselini ekleyebilirsiniz.)_
+
+## 🚀 Hızlı Başlangıç
+
+Guardian'ı kendi ortamınızda kurmak için aşağıdaki adımları izleyin. Detaylı talimatlar için ilgili kurulum belgelerine göz atın.
+
+### 1. Ön Gereksinimler
+
+*   Docker ve Docker Compose
+*   Go (v1.24+)
+*   Node.js ve Angular CLI
+*   Nginx (veya başka bir reverse proxy)
+*   `openssl` komut satırı aracı
+
+### 2. Sertifikaların Oluşturulması
+
+Tüm bileşenler arası güvenli iletişim için kendi TLS sertifikalarınızı oluşturmanız gerekmektedir. Proje, bu süreci basitleştiren interaktif bir betik içerir.
 
 ```bash
-sudo useradd --system --no-create-home --shell /bin/false guardian
+# Proje ana dizininde çalıştırın
+./generate-certs.sh
 ```
 
-### 1.2. Gerekli Dizinleri Oluşturma
+Bu betik size adım adım rehberlik edecektir. Detaylı bilgi için **[Sertifika Oluşturma Rehberi](./docs/generate-certs-usage.md)**'ne bakın.
 
-Uygulama dosyaları ve yapılandırma dosyaları için standart dizinler oluşturulur.
+> 🔐 **GÜVENLİK UYARISI:** Oluşturulan `ca.key` dosyası, tüm sistemin güvenliğinin anahtarıdır. Bu dosyayı **ASLA** sunucularınıza kopyalamayın ve güvenli, çevrimdışı bir ortamda saklayın.
+
+### 3. Sunucu Kurulumu
+
+Projenin merkezi bileşenlerini (Server, Veritabanı, UI) bir sunucuya kurun.
+
+➡️ **Detaylı talimatlar için: [Guardian Sunucu Kurulum Rehberi](./docs/server-setup.md)**
+
+### 4. Agent Kurulumu
+
+Yönetmek istediğiniz her bir hedef sunucuya Guardian Agent'ı kurun.
+
+➡️ **Detaylı talimatlar için: [Guardian Agent Kurulum Rehberi](./docs/agent-setup.md)**
+
+## 💻 Kullanım
+
+Guardian sistemini hem web arayüzü hem de komut satırı aracı (CLI) ile yönetebilirsiniz.
+
+### Web Arayüzü
+
+Kurulum tamamlandıktan sonra, Nginx'i yapılandırdığınız sunucu IP adresine veya alan adına gidin. Karşınıza çıkan giriş ekranına `server.conf` dosyasında belirlediğiniz `GUARDIAN_ADMIN_TOKEN` değerini girerek sisteme erişebilirsiniz.
+
+### Komut Satırı Aracı (CLI)
+
+CLI, otomasyon ve hızlı işlemler için idealdir. Kullanmadan önce, CLI'ın çalışacağı makinede aşağıdaki ortam değişkenlerini ayarlamanız gerekir:
 
 ```bash
-# Uygulama dosyaları için (/opt standart bir yerdir)
-sudo mkdir -p /opt/guardian
-
-# Yapılandırma ve sertifikalar için
-sudo mkdir -p /etc/guardian/certs
+export GUARDIAN_SERVER_HOST="https://<sunucu-ip-adresiniz>"
+export GUARDIAN_SERVER_PORT="5555" # Veya Nginx portunuz (443)
+export GUARDIAN_ADMIN_TOKEN="<server.conf-dosyasindaki-admin-token>"
+export TLS_CA_FILE="/path/to/your/ca.crt"
 ```
 
----
-
-## 2. Ana Sunucu (PC 1) Kurulumu
-
-### 2.1. Gerekli Yazılımları Kurma
-
-Docker, Docker Compose ve Nginx web sunucusunu kurun.
+**Bazı Örnek Komutlar:**
 
 ```bash
-# Gerekli paketleri kur (Debian/Ubuntu için örnek)
-sudo apt update
-sudo apt install -y docker.io docker-compose-v2 nginx
+# Tüm sunucuları listele
+guardian-cli get servers
 
-# Docker servisini başlat ve sistem açılışında etkinleştir
-sudo systemctl start docker
-sudo systemctl enable docker
+# İnteraktif modda yeni bir erişim kuralı oluştur (1 saat geçerli)
+guardian-cli create rule
+
+# Belirli bir sunucuya 30 dakikalık erişim kuralı oluştur
+guardian-cli create rule --server-id 1 --user-id 2 --key-id 3 --duration 30m
+
+# Aktif bir oturumu canlı izle (tarayıcıda açar)
+guardian-cli watch session 42
+
+# 5 numaralı kuralı sil
+guardian-cli delete rule 5
 ```
 
-### 2.2. Proje Dosyalarını Derleme ve Taşıma
+## 📖 API Dokümantasyonu
 
-1.  **`guardian-server`'ı Derleyin:**
-    ```bash
-    cd /path/to/your/project/guardian-server
-    go build -o guardian-server .
-    ```
+Guardian Server, tüm özelliklerini bir RESTful API üzerinden sunar. API'nin tüm endpoint'leri, parametreleri ve beklenen yanıtları **OpenAPI 3.0** standardında belgelenmiştir.
 
-2.  **Gerekli Dosyaları `/opt/guardian` Dizinine Kopyalayın:**
-    ```bash
-    # Derlenmiş sunucu uygulamasını
-    sudo cp /path/to/your/project/guardian-server/guardian-server /opt/guardian/
+➡️ **API referansı için: [Swagger API Dokümantasyonu](./docs/swagger.yaml)**
 
-    # Veritabanı için docker-compose dosyasını
-    sudo cp /path/to/your/project/docker-compose.yml /opt/guardian/
+Bu dosyayı Swagger Editor veya benzeri bir araçla açarak API'yi interaktif olarak inceleyebilirsiniz.
 
-    # Veritabanı şemasını
-    sudo cp /path/to/your/project/schema.sql /opt/guardian/
-    ```
+## 🛠️ Derleme ve Geliştirme
 
-3.  **`guardian-ui`'yi Derleyin ve Taşıyın:**
-    ```bash
-    # UI projesini build et
-    cd /path/to/your/project/guardian-ui
-    ng build
+Projeyi yerel makinenizde derlemek ve geliştirmek için:
 
-    # Nginx için hedef dizini oluştur
-    sudo mkdir -p /var/www/guardian-ui
+*   **Backend (Server & Agent):** İlgili dizine gidin ve `go build .` komutunu çalıştırın.
+*   **Frontend (UI):** `guardian/guardian-ui` dizinine gidin, `npm install` komutuyla bağımlılıkları yükleyin ve `ng serve` ile geliştirme sunucusunu başlatın.
+*   **CLI:** `guardian/guardian-cli` dizinine gidin ve `go build .` komutunu çalıştırın.
 
-    # Build edilmiş dosyaları taşı
-    sudo cp -r ./dist/guardian-ui/browser/* /var/www/guardian-ui/
-    ```
+## 🤝 Katkıda Bulunma
 
-### 2.3. Yapılandırma Dosyalarını Oluşturma
+Katkılarınız bizim için değerlidir! Lütfen bir "issue" açarak veya "pull request" göndererek projeye katkıda bulunun.
 
-1.  **Sertifikaları `/etc/guardian/certs` Altına Kopyalayın:**
-    `ca.crt`, `server.crt`, `server.key` gibi tüm sertifikaları bu dizine taşıyın.
+## 📜 Lisans
 
-2.  **`server.conf` Oluşturun:**
-    `sudo nano /etc/guardian/server.conf` komutuyla dosyayı oluşturun ve aşağıdaki içerikle doldurun.
-    ```ini
-    # /etc/guardian/server.conf
-
-    # PostgreSQL Ayarları
-    POSTGRES_USER=guardian_user
-    POSTGRES_PASSWORD=guardian_password
-    POSTGRES_DB=guardian_db
-    POSTGRES_HOST=localhost
-
-    # Guardian Server Ayarları
-    GUARDIAN_SERVER_HOST=https://localhost
-    GUARDIAN_SERVER_PORT=5555
-    GUARDIAN_AGENT_PORT=6666
-
-    # Güvenlik ve Token'lar
-    GUARDIAN_SECRET_TOKEN=bu-super-gizli-bir-token
-    GUARDIAN_ADMIN_TOKEN=yonetici-icin-cok-gizli-bir-token
-
-    # Sertifika Yolları
-    TLS_CA_FILE=/etc/guardian/certs/ca.crt
-    TLS_CERT_FILE=/etc/guardian/certs/server.crt
-    TLS_KEY_FILE=/etc/guardian/certs/server.key
-    ```
-
-3.  **`docker-compose.yml` Dosyasını Güncelleyin:**
-    `sudo nano /opt/guardian/docker-compose.yml` komutuyla dosyayı açın ve içeriğinin aşağıdaki gibi olduğundan emin olun. Bu, veritabanı şemasını otomatik yükleyecektir.
-    ```yaml
-    version: '3.8'
-    services:
-      db:
-        image: postgres:14-alpine
-        restart: always
-        env_file:
-          - /etc/guardian/server.conf
-        ports:
-          - "127.0.0.1:5432:5432" # Sadece localhost'tan erişim için
-        volumes:
-          - guardian_postgres_data:/var/lib/postgresql/data
-          - /opt/guardian/schema.sql:/docker-entrypoint-initdb.d/init.sql
-    volumes:
-      guardian_postgres_data:
-    ```
-
-### 2.4. `systemd` Servislerini Oluşturma
-
-1.  **`guardian-db.service`:**
-    `sudo nano /etc/systemd/system/guardian-db.service`
-    ```ini
-    [Unit]
-    Description=Guardian PostgreSQL Database (via Docker Compose)
-    Requires=docker.service
-    After=docker.service
-
-    [Service]
-    Type=oneshot
-    RemainAfterExit=yes
-    WorkingDirectory=/opt/guardian
-    ExecStart=/usr/bin/docker-compose -f /opt/guardian/docker-compose.yml up -d
-    ExecStop=/usr/bin/docker-compose -f /opt/guardian/docker-compose.yml down
-    
-    [Install]
-    WantedBy=multi-user.target
-    ```
-
-2.  **`guardian-server.service`:**
-    `sudo nano /etc/systemd/system/guardian-server.service`
-    ```ini
-    [Unit]
-    Description=Guardian Main Server Application
-    Requires=guardian-db.service
-    After=guardian-db.service network-online.target
-
-    [Service]
-    Type=simple
-    User=guardian
-    Group=guardian
-    WorkingDirectory=/opt/guardian
-    EnvironmentFile=/etc/guardian/server.conf
-    ExecStart=/opt/guardian/guardian-server
-    Restart=on-failure
-    RestartSec=5s
-    
-    [Install]
-    WantedBy=multi-user.target
-    ```
-
-### 2.5. Nginx Yapılandırması
-
-`sudo nano /etc/nginx/sites-available/guardian` komutuyla bir dosya oluşturun ve UI'ı sunacak şekilde yapılandırın.
-
-```nginx
-server {
-    listen 80;
-    server_name sunucu_ip_adresiniz_veya_domain.com;
-
-    root /var/www/guardian-ui;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /api/ {
-        proxy_pass https://localhost:5555;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
-Yeni siteyi etkinleştirin:
-```bash
-sudo ln -s /etc/nginx/sites-available/guardian /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl restart nginx
-```
-
-### 2.6. İzinleri Ayarlama ve Servisleri Başlatma
-
-1.  **Dosya Sahipliğini Ayarlayın:**
-    ```bash
-    sudo chown -R guardian:guardian /opt/guardian /etc/guardian
-    sudo chown -R www-data:www-data /var/www/guardian-ui
-    # Kritik anahtar dosyalarının izinlerini sıkılaştırın
-    sudo chmod 600 /etc/guardian/certs/*.key
-    ```
-2.  **Veritabanını Sıfırlayın (İlk Kurulumda):**
-    ```bash
-    cd /opt/guardian
-    sudo docker-compose down --volumes
-    ```
-3.  **Servisleri Başlatın ve Etkinleştirin:**
-    ```bash
-    sudo systemctl daemon-reload
-    sudo systemctl start guardian-db.service guardian-server.service nginx.service
-    sudo systemctl enable guardian-db.service guardian-server.service nginx.service
-    ```
-
----
-
-## 3. Agent Sunucusu (PC 2) Kurulumu
-
-### 3.1. Proje Dosyalarını Derleme ve Taşıma
-
-1.  **`guardian-agent`'ı Derleyin:**
-    ```bash
-    cd /path/to/your/project/guardian-agent
-    go build -o guardian-agent .
-    ```
-2.  **Derlenmiş `guardian-agent`'ı `/opt/guardian` Dizinine Kopyalayın:**
-    ```bash
-    # scp veya benzeri bir yöntemle agent sunucusuna aktarın
-    sudo cp /path/to/your/local/guardian-agent /opt/guardian/
-    sudo chmod +x /opt/guardian/guardian-agent
-    ```
-
-### 3.2. Yapılandırma Dosyalarını Oluşturma
-
-1.  **Gerekli Sertifikaları ve Anahtarları Kopyalayın:**
-    Ana sunucudan `ca.crt`, `agent1.crt`, `agent1.key`, `agent_service_key` dosyalarını agent sunucusundaki `/etc/guardian/` altına kopyalayın.
-
-2.  **`agent.conf` Oluşturun:**
-    `sudo nano /etc/guardian/agent.conf` komutuyla dosyayı oluşturun. **`GUARDIAN_SERVER_HOST` değişkenini Ana Sunucunun IP adresiyle değiştirdiğinizden emin olun.**
-    ```ini
-    # /etc/guardian/agent.conf
-    GUARDIAN_SERVER_HOST=https://<ANA_SUNUCUNUN_IP_ADRESI>
-    GUARDIAN_SERVER_PORT=5555
-    GUARDIAN_AGENT_SERVER_ID=2 # Her agent için farklı bir ID
-    GUARDIAN_SECRET_TOKEN=bu-super-gizli-bir-token
-
-    # Gerekli sertifika yolları
-    AGENT_TLS_CERT_FILE=/etc/guardian/certs/agent1.crt
-    AGENT_TLS_KEY_FILE=/etc/guardian/certs/agent1.key
-    TLS_CA_FILE=/etc/guardian/certs/ca.crt
-    GUARDIAN_AGENT_SSH_KEY_PATH=/etc/guardian/agent_service_key
-    ```
-
-3.  **Anahtar Yönetim Betiğini Oluşturun:**
-    Güvenli anahtar yönetimi için `sudo nano /opt/guardian/manage-keys.sh` komutuyla bir betik oluşturun. (Önceki yanıtlarda verilen betik içeriğini buraya yapıştırın). Ardından izinlerini ayarlayın:
-    ```bash
-    sudo chmod +x /opt/guardian/manage-keys.sh
-    sudo chown root:root /opt/guardian/manage-keys.sh
-    ```
-
-4.  **`sudoers` Dosyasını Yapılandırın:**
-    `sudo visudo` komutunu çalıştırın ve dosyanın sonuna şu satırı ekleyin:
-    ```
-    guardian ALL=(ALL) NOPASSWD: /opt/guardian/manage-keys.sh
-    ```
-
-### 3.3. SSH Sunucusunu Yapılandırma
-
-`sudo nano /etc/ssh/sshd_config` ile SSH sunucu yapılandırmasını açın ve aşağıdaki satırın `yes` olduğundan emin olun:
-```sshd_config
-PermitUserEnvironment yes
-```
-Değişiklikten sonra SSH servisini yeniden başlatın: `sudo systemctl restart sshd`
-
-### 3.4. `systemd` Servisini Oluşturma
-
-`sudo nano /etc/systemd/system/guardian-agent.service`
-```ini
-[Unit]
-Description=Guardian Agent (Listener for Server Commands)
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=guardian
-Group=guardian
-WorkingDirectory=/opt/guardian
-EnvironmentFile=/etc/guardian/agent.conf
-ExecStart=/opt/guardian/guardian-agent serve
-Restart=on-failure
-RestartSec=10s
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### 3.5. İzinleri Ayarlama ve Servisi Başlatma
-
-1.  **Dosya ve Grup İzinlerini Ayarlayın:**
-    ```bash
-    # Dizin sahipliği
-    sudo chown -R guardian:guardian /opt/guardian /etc/guardian
-
-    # Kritik dosya izinleri
-    sudo chmod 750 /etc/guardian /etc/guardian/certs
-    sudo chmod 640 /etc/guardian/agent.conf
-    sudo chmod 640 /etc/guardian/certs/*.crt
-    sudo chmod 640 /etc/guardian/certs/*.key
-    sudo chmod 640 /etc/guardian/agent_service_key
-
-    # Hedef SSH kullanıcılarını guardian grubuna ekleyin
-    sudo usermod -a -G guardian <hedef_kullanici_adi>
-    ```
-
-2.  **Servisi Başlatın ve Etkinleştirin:**
-    ```bash
-    sudo systemctl daemon-reload
-    sudo systemctl start guardian-agent.service
-    sudo systemctl enable guardian-agent.service
-    ```
-    
->>>>>>> master
+Bu proje MIT Lisansı altında lisanslanmıştır. Detaylar için `LICENSE` dosyasına bakın.
