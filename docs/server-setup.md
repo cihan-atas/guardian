@@ -33,51 +33,122 @@ Guardian, verilerini saklamak için PostgreSQL kullanır. Kurulumu basitleştirm
 1.  **Repo'dan Gerekli Dosyaları Kopyalayın:**
     Projenin GitHub reposundan `docker-compose.yml` ve `schema.sql` dosyalarını sunucunuzdaki `/opt/guardian/` dizinine kopyalayın.
 
-2.  **`docker-compose.yml` Dosyasını Güvenli Hale Getirin:**
-    Kopyaladığınız `/opt/guardian/docker-compose.yml` dosyasını açın ve `ports` bölümünü düzenleyerek veritabanının sadece sunucunun kendisinden erişilebilir olmasını sağlayın.
-    ```bash
-    sudo nano /opt/guardian/docker-compose.yml
-    ```
-    Dosyanın içeriği şu şekilde olmalıdır:
-    ```yaml
-    services:
-      db:
-        image: postgres:14-alpine
-        restart: always
-        environment:
-          POSTGRS_USER: guardian_user
-          POSTGRES_PASSWORD: guardian_password
-          POSTGRES_DB: guardian_db
-        ports:
-          - "127.0.0.1:5432:5432" # Sadece localhost'tan erişim
-        volumes:
-          - guardian_postgres_data:/var/lib/postgresql/data
-    
+
+#### 2. `docker-compose.yml` Dosyasını Yapılandırın ve Güvenliğini Sağlayın
+
+**Önemli:** Veritabanınızın güvenliği, sistemin genel güvenliği için hayati önem taşır. Bu adımda, veritabanına sadece sunucunun kendi içinden erişilebildiğinden emin olacağız.
+
+Kopyaladığınız `/opt/guardian/docker-compose.yml` dosyasını bir metin editörü ile açın:
+
+```bash
+sudo nano /opt/guardian/docker-compose.yml
+```
+
+Dosyanın içeriğinin aşağıdaki gibi olduğundan emin olun. Özellikle `ports` bölümünü ve `environment` altındaki parolayı kontrol edin:
+
+```yaml
+services:
+  db:
+    image: postgres:14-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: guardian_user
+      # DİKKAT: Production ortamında bu parolayı mutlaka daha güvenli bir parola ile değiştirin!
+      POSTGRES_PASSWORD: guardian_password
+      POSTGRES_DB: guardian_db
+    ports:
+      # SADECE localhost'tan (sunucunun kendisinden) erişime izin verilir.
+      # Bu, en güvenli ve tavsiye edilen yapılandırmadır.
+      - "127.0.0.1:5432:5432"
     volumes:
-      guardian_postgres_data:
-    ```
-    
-3.  **Veritabanı için `systemd` Servisi Oluşturun:**
-    ```bash
-    sudo nano /etc/systemd/system/guardian-db.service
-    ```
-    İçine aşağıdaki içeriği yapıştırın:
-    ```ini
-    [Unit]
-    Description=Guardian PostgreSQL Database (via Docker Compose)
-    Requires=docker.service
-    After=docker.service
+      - guardian_postgres_data:/var/lib/postgresql/data
 
-    [Service]
-    Type=oneshot
-    RemainAfterExit=yes
-    WorkingDirectory=/opt/guardian
-    ExecStart=/usr/bin/docker compose -f /opt/guardian/docker-compose.yml up -d
-    ExecStop=/usr/bin/docker compose -f /opt/guardian/docker-compose.yml down
+volumes:
+  guardian_postgres_data:
+```
 
-    [Install]
-    WantedBy=multi-user.target
-    ```
+Bu yapılandırmadaki `"127.0.0.1:5432:5432"` satırı, PostgreSQL veritabanı portunun (5432) **yalnızca sunucunun kendisine** (localhost) açılmasını sağlar. Bu sayede dış ağdan veya yerel ağdaki başka bir bilgisayardan veritabanına doğrudan erişim engellenmiş olur. **Production (canlı) ortamlar için bu yapılandırmayı değiştirmemeniz şiddetle tavsiye edilir.**
+
+---
+
+#### İsteğe Bağlı: Veritabanını Yerel Ağa Açma (Tavsiye Edilmez)
+
+> **⚠️ DİKKAT: CİDDİ GÜVENLİK RİSKİ ⚠️**
+>
+> Bu adımı yalnızca **geliştirme ortamınızda, güvenli ve tamamen kapalı bir yerel ağ içerisindeyseniz** ve veritabanına kendi bilgisayarınızdan bir araçla (örn: DBeaver) erişmeniz *kesinlikle* gerekiyorsa uygulayın.
+>
+> Veritabanı portunu yerel ağa açmak, kontrolsüz ağlarda veritabanınıza yetkisiz erişim sağlanmasına ve veri sızıntılarına yol açabilecek **kritik bir güvenlik açığı** oluşturur.
+>
+> **BU YAPILANDIRMAYI PRODUCTION (CANLI) SUNUCULARDA ASLA KULLANMAYIN!**
+>
+> Eğer riski anladıysanız ve devam etmek istiyorsanız, `docker-compose.yml` dosyasındaki `ports` bölümünü şu şekilde değiştirin:
+>
+> ```diff
+> services:
+>   db:
+>     ...
+>     ports:
+> -     - "127.0.0.1:5432:5432"  # GÜVENLİ: Sadece localhost'tan erişim
+> +     - "5432:5432"             # RİSKLİ: Tüm ağ arayüzlerinden erişim
+>     ...
+> ```
+---
+
+#### 3. Veritabanı için `systemd` Servisi Oluşturun
+
+Sunucu yeniden başladığında veritabanı konteynerinin otomatik olarak başlaması için bir `systemd` servisi oluşturacağız.
+
+```bash
+sudo nano /etc/systemd/system/guardian-db.service
+```
+
+Açılan editörün içine aşağıdaki içeriği yapıştırın ve dosyayı kaydedin:
+
+```ini
+[Unit]
+Description=Guardian PostgreSQL Database (via Docker Compose)
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/guardian
+ExecStart=/usr/bin/docker compose -f /opt/guardian/docker-compose.yml up -d
+ExecStop=/usr/bin/docker compose -f /opt/guardian/docker-compose.yml down
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### 4. Servisi Aktif Edin ve Başlatın
+
+Yeni oluşturduğunuz servisi `systemd`'ye tanıtın, açılışta başlayacak şekilde ayarlayın ve hemen başlatın:
+
+```bash
+# systemd'ye yeni servis dosyasını okumasını söyleyin
+sudo systemctl daemon-reload
+
+# Servisi açılışta başlayacak şekilde etkinleştirin ve şimdi başlatın
+sudo systemctl enable --now guardian-db.service
+```
+
+#### 5. Kurulumu Doğrulayın
+
+Servisin ve veritabanı konteynerinin çalıştığını kontrol edin:
+
+```bash
+# systemd servis durumunu kontrol edin
+sudo systemctl status guardian-db.service
+```
+
+Çıktıda `active (exited)` görmelisiniz. Bu, `ExecStart` komutunun başarıyla çalışıp sonlandığını, ancak servisin aktif kalmaya devam ettiğini gösterir (`RemainAfterExit=yes` sayesinde).
+
+```bash
+# Çalışan Docker konteynerlerini listeleyin
+sudo docker ps
+```
+Çıktıda `postgres:14-alpine` imajını kullanan bir konteynerin çalıştığını ve `PORTS` kısmında `127.0.0.1:5432->5432/tcp` yazdığını görmelisiniz.
 
 ### Adım 4: Binary'leri Derleme ve Kopyalama
 
