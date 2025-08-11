@@ -484,48 +484,149 @@ Bu adımda, oluşturulan sertifikaları sunucuya kopyalayıp tüm Guardian dosya
     ```bash
     sudo nano /etc/systemd/system/guardian-server.service
     ```
-    ```ini
-    [Unit]
-    Description=Guardian Main Server Application
-    Requires=guardian-db.service
-    After=guardian-db.service network-online.target
+    
+```ini
+# ##################################################################
+# #            Guardian Ana Sunucu için systemd Servis Dosyası     #
+# #          Konum: /etc/systemd/system/guardian-server.service    #
+# ##################################################################
+#
+# Bu servis, Guardian ana uygulamasını başlatır, yönetir ve sunucu
+# açıldığında otomatik olarak çalışmasını sağlar. Veritabanı ve
+# ağ bağlantıları hazır olmadan başlamayacak şekilde yapılandırılmıştır.
 
-    [Service]
-    Type=simple
-    User=guardian
-    Group=guardian
-    WorkingDirectory=/opt/guardian
-    EnvironmentFile=/etc/guardian/server.conf
-    ExecStart=/usr/local/bin/guardian-server
-    Restart=on-failure
-    RestartSec=5s
-    StandardOutput=journal
-    StandardError=journal
-    SyslogIdentifier=guardian-server
-    PrivateTmp=true
-    ProtectSystem=full
-    ProtectHome=true
+[Unit]
+# --- Servis Tanımı ve Bağımlılıklar ---
+# Bu bölüm, servisin ne olduğunu ve çalışmak için nelere ihtiyacı olduğunu tanımlar.
 
-    [Install]
-    WantedBy=multi-user.target
-    ```
+# systemctl status komutunda görünecek olan insan tarafından okunabilir açıklama.
+Description=Guardian Main Server Application
+
+# Bu servis başlamadan önce 'guardian-db.service'in çalışıyor olmasını zorunlu kılar.
+# Eğer veritabanı servisi başlamazsa, bu uygulama da başlamayı denemez.
+Requires=guardian-db.service
+
+# Bu servis, hem veritabanı servisi ('guardian-db.service') hem de
+# ağ bağlantıları ('network-online.target') hazır olduktan SONRA başlar.
+# Bu, uygulamanın hazır olmayan kaynaklara bağlanmaya çalışmasını önler.
+After=guardian-db.service network-online.target
+
+
+[Service]
+# --- Servis Davranışı, Güvenlik ve Komutlar ---
+# Bu bölüm, servisin nasıl çalışacağını ve çalışacağı ortamı tanımlar.
+
+# Servis tipi. 'simple', ExecStart'taki komutun ana servis süreci olduğu anlamına gelir.
+Type=simple
+
+# DİKKAT: Güvenlik için uygulama, 'root' yerine kısıtlı yetkilere sahip
+# olan 'guardian' kullanıcısı ve grubu altında çalıştırılır.
+User=guardian
+Group=guardian
+
+# Komutların çalıştırılacağı varsayılan dizin.
+WorkingDirectory=/opt/guardian
+
+# Belirtilen dosyadan (server.conf) ortam değişkenlerini (veritabanı parolası, tokenlar vb.) yükler.
+EnvironmentFile=/etc/guardian/server.conf
+
+# Servis başlatıldığında çalıştırılacak olan ana komut.
+ExecStart=/usr/local/bin/guardian-server
+
+# Servisin ne zaman yeniden başlatılacağını belirler. 'on-failure', sadece
+# beklenmedik bir şekilde (hata koduyla) sonlandığında yeniden başlatır.
+Restart=on-failure
+
+# Bir hata sonrası yeniden başlatmadan önce 5 saniye bekle.
+RestartSec=5s
+
+# --- Günlük (Logging) Ayarları ---
+# Uygulamanın standart çıktı ve hata akışlarını systemd günlüğüne (journal) yönlendirir.
+StandardOutput=journal
+StandardError=journal
+# Günlüklerdeki girdileri 'guardian-server' etiketiyle tanımlar.
+# 'journalctl -u guardian-server.service' komutuyla logları kolayca filtrelemeyi sağlar.
+SyslogIdentifier=guardian-server
+
+# --- Güvenlik İyileştirmeleri (Hardening) ---
+# Bu ayarlar, servisi olası saldırılara karşı önemli ölçüde güçlendirir.
+
+# Servise özel, geçici bir /tmp ve /var/tmp dizini oluşturur. Bu, diğer
+# işlemlerin geçici dosyalarına erişmesini veya müdahale etmesini engeller.
+PrivateTmp=true
+
+# Sistem dizinlerini (/usr, /boot, /etc) salt okunur (read-only) yapar.
+# Bir saldırganın uygulama üzerinden sistem dosyalarını değiştirmesini önler.
+ProtectSystem=full
+
+# Kullanıcı ev dizinlerini (/home, /root) erişilemez hale getirir.
+# Uygulamanın, kullanıcı verilerine erişmesini engeller.
+ProtectHome=true
+
+
+[Install]
+# --- Servis Etkinleştirme Ayarları ---
+# Bu bölüm, 'systemctl enable' komutu çalıştırıldığında ne olacağını tanımlar.
+
+# Bu satır, servisin açılışta otomatik olarak başlamasını sağlar. 'multi-user.target',
+# sunucunun normal, ağa bağlı çalışma seviyesidir.
+WantedBy=multi-user.target
+```
 
 2.  **`guardian-agent.service` (Bu sunucunun kendisi için):**
-    Bu dosyanın içeriği, Agent Kurulumu rehberindeki ile aynıdır.
+    Bu dosyanın içeriği, **[Guardian Agent Kurulumu](./agent-setup.md)** rehberindeki ile aynıdır.
 
 ### Adım 10: Servisleri Aktifleştirme
 
-Tüm yapılandırmalar tamamlandıktan sonra, servisleri doğru sırada başlatın.
+Tüm yapılandırmalar tamamlandıktan sonra, servisleri doğru sırada başlatın ve sistem açılışında otomatik olarak çalışacak şekilde etkinleştirin.
+
 ```bash
 # Değişiklikleri sisteme tanıt
 sudo systemctl daemon-reload
 
-# Servisleri etkinleştir ve başlat
+# Servisleri etkinleştir ve şimdi başlat
 sudo systemctl enable --now guardian-db.service
 sudo systemctl enable --now guardian-server.service
-sudo systemctl enable --now guardian-agent.service
 sudo systemctl enable --now nginx
 
-# Durumlarını kontrol et
+# Sunucu aynı zamanda agent ise, agent servisini de başlat
+sudo systemctl enable --now guardian-agent.service
+
+# Tüm servislerin durumlarını kontrol et
 sudo systemctl status guardian-db.service guardian-server.service guardian-agent.service nginx
 ```
+
+> ### 🗒️ Önemli Not: `guardian-server` Başlamazsa Ne Yapmalı?
+>
+> Eğer yukarıdaki `status` komutunun çıktısında `guardian-server.service`'in durumu `failed` (başarısız) olarak görünüyorsa, bunun en yaygın nedeni, uygulamanın ihtiyaç duyduğu veritabanı tablolarının henüz oluşturulmamış olmasıdır.
+>
+> Bunu doğrulamak için servis loglarını kontrol edebilirsiniz:
+> ```bash
+> sudo journalctl -u guardian-server.service -n 50 --no-pager
+> ```
+> Loglarda `table "users" does not exist` gibi hatalar görüyorsanız, çözüm, bu tabloları manuel olarak oluşturmaktır. `schema.sql` dosyası, `/opt/guardian/` dizininde bulunmalıdır.
+>
+> #### **Çözüm Adımları:**
+>
+> 1.  **PostgreSQL interaktif terminaline bağlanın.** `docker-compose.yml` dosyasında belirttiğiniz parolayı girmeniz istenecektir.
+>     ```bash
+>     psql -h localhost -p 5432 -U guardian_user -d guardian_db
+>     ```
+>
+> 2.  **Veritabanı şemasını dosyadan içe aktarın.** Aşağıdaki komutu `psql` shell'i (`guardian_db=#`) içindeyken çalıştırın:
+>     ```sql
+>     \i schema.sql
+>     ```
+>     **Not:** Çıktıda `psql:schema.sql:11: ERROR: unrecognized configuration parameter "transaction_timeout"` gibi bir hata görebilirsiniz. Bu hata, schema'yı oluşturan veritabanı sürümü ile sizin kullandığınız sürüm arasındaki küçük bir farktan kaynaklanır ve **önemli değildir**. Diğer `CREATE TABLE`, `ALTER TABLE` komutları başarıyla çalıştığı sürece bu hatayı **göz ardı edebilirsiniz**.
+>
+> 3.  **İşlem bittikten sonra psql'den çıkın:**
+>     ```sql
+>     \q
+>     ```
+>
+> 4.  **Son olarak, başarısız olan servisi yeniden başlatın:**
+>     ```bash
+>     sudo systemctl restart guardian-server.service
+>     ```
+>
+> Birkaç saniye bekledikten sonra durumunu tekrar kontrol ettiğinizde servisin `active (running)` durumuna geçtiğini görmelisiniz.
