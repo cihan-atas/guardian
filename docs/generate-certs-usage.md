@@ -18,20 +18,62 @@ Bu betik, tüm sertifika oluşturma ve imzalama adımlarını sizin için yönet
     ./generate-certs.sh
     ```
 
-2.  **İnteraktif Menü:**
-    Karşınıza interaktif bir menü çıkacaktır:
-    ```
-    ====================================================
-      Guardian Projesi için İnteraktif Sertifika Oluşturucu 
-    ====================================================
-    Lütfen yapmak istediğiniz işlemi seçin:
-      1) Sıfırdan tam kurulum yap (Mevcut 'certs' dizinini siler)
-      2) Mevcut CA'yı kullanarak YENİ Agent sertifikası ekle
-      3) Çıkış
-    Seçiminiz [1, 2, 3]:
-    ```
-    *   **Seçenek 1 (Sıfırdan tam kurulum):** Projeyi ilk defa kuruyorsanız bu seçeneği kullanmalısınız. Bu seçenek, mevcut `certs` dizinini siler ve sıfırdan bir Kök CA, bir Sunucu Sertifikası ve belirttiğiniz sayıda Agent Sertifikası oluşturur.
-    *   **Seçenek 2 (Yeni Agent Ekle):** Mevcut bir Guardian kurulumunuz varsa ve sisteme yeni bir agent sunucusu eklemek istiyorsanız bu seçeneği kullanın. Bu, mevcut CA'nızı kullanarak sadece yeni bir agent için sertifika ve anahtar oluşturur.
+2.  **İnteraktif Süreci Takip Edin:**
+    Betiği çalıştırdığınızda, size adım adım rehberlik eden interaktif bir arayüzle karşılaşacaksınız. Aşağıda, "Sıfırdan tam kurulum" seçeneği için örnek bir diyalog ve açıklaması verilmiştir.
+
+### Örnek Kurulum: Sıfırdan Tam Kurulum (Seçenek 1)
+
+Bu senaryoda, bir Kök CA, bir Guardian Server ve iki adet Agent için sertifika oluşturacağız.
+
+```bash
+# Betiği çalıştırdığınızda ilk göreceğiniz menü
+====================================================
+  Guardian Projesi için İnteraktif Sertifika Oluşturucu
+====================================================
+Lütfen yapmak istediğiniz işlemi seçin:
+  1) Sıfırdan tam kurulum yap (Mevcut 'certs' dizinini siler)
+  2) Mevcut CA'yı kullanarak YENİ Agent sertifikası ekle
+  3) Çıkış
+Seçiminiz [1, 2, 3]: 1  # <-- Sıfırdan kurulum için 1'i seçiyoruz
+
+UYARI: 'certs' dizini silinecek. Emin misiniz? (e/h): e # <-- Onay veriyoruz
+
+--- Adım 1: Kök Sertifika Otoritesi (CA) Oluşturma ---
+# Bu, tüm sertifikaları imzalayacak olan ana güven otoritesidir.
+CA için bir 'Common Name' girin (örn: Guardian Root CA): Guardian Root CA
+
+--- Adım 2: Guardian Server Sertifikası Oluşturma ---
+# Bu, Guardian ana sunucusunun kimliğidir.
+# 'Common Name' ve 'DIŞ IP' olarak sunucunun erişilebilir IP adresini veya DNS adını girin.
+Server için bir 'Common Name' girin (genellikle DNS adı, varsayılan: localhost): 10.10.10.2
+Server için DIŞ IP adresini girin (örn: 10.2.60.185): 10.10.10.2
+
+--- Guardian Agent Sertifikaları Oluşturma ---
+# Sisteme bağlayacağınız toplam agent sayısını belirtin.
+Kaç adet Agent için sertifika oluşturulacak? 2
+
+# Betik, her bir agent için ayrı ayrı bilgi isteyecektir.
+
+--- Agent #1 için bilgiler ---
+# 'dosya adı' agent'ı ayırt etmeyi sağlar (örn: agent0, agent-db-1).
+# 'Common Name' ve 'DIŞ IP' olarak agent sunucusunun IP adresini girin.
+Agent #1 için ayırt edici bir dosya adı girin (örn: agent-prod-1): agent0
+Agent #1 için 'Common Name' girin (örn: prod-web-1.mydomain.com): 10.10.10.2
+Agent #1 için DIŞ IP adresini girin (örn: 10.2.60.185): 10.10.10.2
+
+--- Agent #2 için bilgiler ---
+Agent #2 için ayırt edici bir dosya adı girin (örn: agent-prod-1): agent1
+Agent #2 için 'Common Name' girin (örn: prod-web-1.mydomain.com): 10.10.10.3
+Agent #2 için DIŞ IP adresini girin (örn: 10.2.60.185): 10.10.10.3
+
+# Betik, geçici dosyaları temizledikten sonra işlemi tamamlar.
+--- Temizlik ---
+Geçici .csr, .ext ve .srl dosyaları siliniyor...
+
+====================================================
+      ✅ İşlem başarıyla tamamlandı!
+====================================================
+```
 
 ### Betiğin Oluşturduğu Dosyalar ve Anlamları
 
