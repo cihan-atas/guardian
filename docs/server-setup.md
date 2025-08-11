@@ -105,19 +105,65 @@ sudo nano /etc/systemd/system/guardian-db.service
 Açılan editörün içine aşağıdaki içeriği yapıştırın ve dosyayı kaydedin:
 
 ```ini
+# ##################################################################
+# #          Guardian Veritabanı için systemd Servis Dosyası       #
+# #          Konum: /etc/systemd/system/guardian-db.service        #
+# ##################################################################
+#
+# Bu servis, sunucu açıldığında Guardian'ın PostgreSQL veritabanını
+# barındıran Docker konteynerini otomatik olarak başlatır ve
+# sunucu kapandığında güvenli bir şekilde durdurur.
+
 [Unit]
+# --- Servis Tanımı ve Bağımlılıklar ---
+# Bu bölüm, servisin ne olduğunu ve çalışmak için nelere ihtiyacı olduğunu tanımlar.
+
+# systemctl status komutunda görünecek olan insan tarafından okunabilir açıklama.
 Description=Guardian PostgreSQL Database (via Docker Compose)
+
+# Bu servis başlamadan önce 'docker.service'in çalışıyor olmasını zorunlu kılar.
+# Eğer Docker servisi başlamazsa, bu servis de başlamaz.
 Requires=docker.service
+
+# Bu servis, sadece 'docker.service' başarıyla başladıktan SONRA başlar.
+# Bu, olası bir yarış durumunu (race condition) önler.
 After=docker.service
 
+
 [Service]
+# --- Servis Davranışı ve Komutlar ---
+# Bu bölüm, servisin nasıl başlayacağını, duracağını ve çalışacağını tanımlar.
+
+# Servis tipini 'oneshot' olarak ayarlar. Bu, ExecStart'taki komutun
+# çalışıp bitmesi beklenen tek seferlik bir işlem olduğu anlamına gelir.
+# 'docker compose up -d' komutu konteynerleri arka plana atıp kendisi sonlandığı için bu tip uygundur.
 Type=oneshot
+
+# 'Type=oneshot' ile birlikte kullanılır. ExecStart komutu bittikten sonra bile
+# systemd'nin bu servisi 'aktif' olarak kabul etmesini sağlar.
+# Bu sayede, konteynerler arka planda çalışmaya devam ederken servis durumu doğru görünür.
 RemainAfterExit=yes
+
+# Komutların çalıştırılacağı dizini belirtir. /opt/guardian/docker-compose.yml dosyasının
+# bulunduğu yer olduğu için bu dizin ayarlanmıştır.
 WorkingDirectory=/opt/guardian
+
+# Servis başlatıldığında ('systemctl start guardian-db') çalıştırılacak komut.
+# Belirtilen docker-compose.yml dosyasını kullanarak konteynerleri arka planda (-d) başlatır.
 ExecStart=/usr/bin/docker compose -f /opt/guardian/docker-compose.yml up -d
+
+# Servis durdurulduğunda ('systemctl stop guardian-db') çalıştırılacak komut.
+# Konteynerleri güvenli bir şekilde durdurur ve kaldırır.
 ExecStop=/usr/bin/docker compose -f /opt/guardian/docker-compose.yml down
 
+
 [Install]
+# --- Servis Etkinleştirme Ayarları ---
+# Bu bölüm, 'systemctl enable' komutu çalıştırıldığında ne olacağını tanımlar.
+
+# Bu servis, sistem 'multi-user.target' seviyesine ulaştığında (yani normal sunucu
+# çalışma moduna geçtiğinde) başlatılmak istenir. Bu satır, servisin açılışta
+# otomatik olarak başlamasını sağlar.
 WantedBy=multi-user.target
 ```
 
@@ -185,38 +231,124 @@ sudo docker ps
     ```bash
     sudo nano /etc/guardian/server.conf
     ```
-    ```ini
-    # /etc/guardian/server.conf
-    POSTGRES_USER=guardian_user
-    POSTGRES_PASSWORD=guardian_password
-    POSTGRES_DB=guardian_db
-    POSTGRES_HOST=localhost
-    POSTGRES_PORT=5432
-    GUARDIAN_SERVER_PORT=5555
-    GUARDIAN_AGENT_PORT=6666
-    GUARDIAN_SECRET_TOKEN=bu-super-gizli-bir-token-DEGISTIR
-    GUARDIAN_ADMIN_TOKEN=yonetici-icin-cok-gizli-bir-token-DEGISTIR
-    TLS_CA_FILE=/etc/guardian/certs/ca.crt
-    TLS_CERT_FILE=/etc/guardian/certs/server.crt
-    TLS_KEY_FILE=/etc/guardian/certs/server.key
-    ```
+```ini
+#################################################################
+#           Guardian Server Yapılandırma Dosyası                #
+#             Konum: /etc/guardian/server.conf                  #
+#################################################################
+
+# --- Veritabanı Bağlantı Ayarları ------------------------------
+# Bu bölümdeki ayarlar, Guardian Server'ın PostgreSQL veritabanına nasıl
+# bağlanacağını belirler. Bu değerlerin, /opt/guardian/docker-compose.yml
+# dosyasındaki 'environment' bölümü ile tutarlı olması gerekir.
+
+POSTGRES_USER=guardian_user
+
+# DİKKAT: Bu parolanın, docker-compose.yml dosyasındaki POSTGRES_PASSWORD ile aynı olması zorunludur.
+POSTGRES_PASSWORD=guardian_password
+
+POSTGRES_DB=guardian_db
+
+# Veritabanı Docker konteyneri ile aynı sunucuda çalıştığı için 'localhost' kullanılır.
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+
+
+# --- Sunucu Ağ Ayarları -----------------------------------------
+# Guardian servislerinin dinleyeceği ağ portları.
+
+# Guardian Server'ın CLI ve diğer bileşenlerden gelen yönetimsel istekleri dinleyeceği port.
+GUARDIAN_SERVER_PORT=5555
+
+# Guardian Agent'ların metrik göndermek için bağlanacağı port.
+GUARDIAN_AGENT_PORT=6666
+
+
+# --- Güvenlik ve Kimlik Doğrulama Ayarları ----------------------
+# DİKKAT: Aşağıdaki token değerleri production (canlı) ortamı için
+# mutlaka GÜVENLİ ve TAHMİN EDİLEMEZ değerlerle değiştirilmelidir!
+
+# Agent'ların sunucuya bağlanırken kullandığı paylaşımlı gizli anahtar.
+GUARDIAN_SECRET_TOKEN=bu-super-gizli-bir-token-DEGISTIR
+
+# Guardian CLI aracılığıyla yönetimsel komutları çalıştırmak ve Web Arayüzüne (UI) bağlanmak için gereken yönetici token.
+GUARDIAN_ADMIN_TOKEN=yonetici-icin-cok-gizli-bir-token-DEGISTIR
+
+
+# --- TLS/SSL Sertifika Ayarları --------------------------------
+# Bu yollar, 'generate-certs.sh' betiği ile oluşturulan ve sunucuya
+# kopyalanan sertifika dosyalarını göstermelidir.
+
+# Kök Sertifika Otoritesi (CA) dosyası.
+TLS_CA_FILE=/etc/guardian/certs/ca.crt
+
+# Sunucunun kendi sertifika dosyası.
+TLS_CERT_FILE=/etc/guardian/certs/server.crt
+
+# Sunucunun özel anahtar dosyası.
+TLS_KEY_FILE=/etc/guardian/certs/server.key
+```
 
 2.  **`agent.conf` Dosyasını Oluşturun (Bu sunucunun kendi agent'ı için):**
     ```bash
     sudo nano /etc/guardian/agent.conf
     ```
-    ```ini
-    # /etc/guardian/agent.conf
-    GUARDIAN_SERVER_HOST=https://127.0.0.1
-    GUARDIAN_SERVER_PORT=5555
-    GUARDIAN_AGENT_SERVER_ID=2 # Bu sunucunun Guardian'daki ID'si
-    GUARDIAN_SECRET_TOKEN=bu-super-gizli-bir-token-DEGISTIR
-    TLS_CA_FILE=/etc/guardian/certs/ca.crt
-    AGENT_TLS_CERT_FILE=/etc/guardian/certs/agent.crt
-    AGENT_TLS_KEY_FILE=/etc/guardian/certs/agent.key
-    GUARDIAN_AGENT_SSH_KEY_PATH=/etc/guardian/agent_service_key
-    GUARDIAN_AGENT_TRUSTED_HOST_KEY=/etc/ssh/ssh_host_ed25519_key.pub
-    ```
+    
+```ini
+#################################################################
+#              Guardian Agent Yapılandırma Dosyası              #
+#             Konum: /etc/guardian/agent.conf                   #
+#################################################################
+
+# --- Merkezi Sunucu Bağlantı Ayarları --------------------------
+# Bu bölüm, Agent'ın hangi Guardian Server'a bağlanacağını ve
+# nasıl iletişim kuracağını belirler.
+
+# DİKKAT: Guardian Server'ın genel erişilebilir IP adresini veya DNS adını girin.
+# 'https://' protokolü zorunludur.
+GUARDIAN_SERVER_HOST=https://10.10.10.2
+
+# Guardian Server'ın agent bağlantılarını dinlediği port.
+# Bu değer, server.conf dosyasındaki 'GUARDIAN_AGENT_PORT' ile aynı olmalıdır.
+GUARDIAN_SERVER_PORT=6666
+
+
+# --- Agent Kimlik ve Doğrulama Ayarları -------------------------
+# Bu bölüm, Agent'ın sunucuya kendini nasıl tanıtacağını belirler.
+
+# DİKKAT: Bu Agent'a Guardian Server üzerinde atanan benzersiz kimlik (ID) numarasıdır.
+# Bu değerin sunucu tarafındaki kayıtlarla eşleşmesi gerekir.
+GUARDIAN_AGENT_SERVER_ID=2
+
+# DİKKAT: Sunucu ile paylaşılan gizli anahtar.
+# Bu değer, server.conf dosyasındaki 'GUARDIAN_SECRET_TOKEN' ile birebir aynı olmalıdır.
+GUARDIAN_SECRET_TOKEN=bu-super-gizli-bir-token-DEGISTIR
+
+
+# --- TLS/SSL Sertifika Ayarları --------------------------------
+# Güvenli iletişim (mTLS) için gereken sertifika dosyalarının yolları.
+
+# Guardian Server'ın kimliğini doğrulamak için kullanılan Kök Sertifika Otoritesi (CA) dosyası.
+TLS_CA_FILE=/etc/guardian/certs/ca.crt
+
+# Bu Agent'ın kendi kimliğini sunucuya kanıtlamak için kullandığı sertifika dosyası.
+AGENT_TLS_CERT_FILE=/etc/guardian/certs/agent.crt
+
+# Agent sertifikasına karşılık gelen özel anahtar dosyası. Bu dosya hassastır.
+AGENT_TLS_KEY_FILE=/etc/guardian/certs/agent.key
+
+
+# --- SSH Bağlantı Ayarları (İleri Düzey Görevler için) ---------
+# Agent'ın görevleri yerine getirmek için SSH bağlantısı yapması gerektiğinde
+# kullanacağı anahtar dosyaları.
+
+# Agent'ın SSH bağlantısı kurarken kullanacağı özel anahtarın yolu.
+GUARDIAN_AGENT_SSH_KEY_PATH=/etc/guardian/agent_service_key
+
+# Agent'ın bağlanacağı SSH sunucusunun genel anahtarı. Bu, 'ortadaki adam'
+# saldırılarını önlemek için SSH sunucusunun kimliğini doğrulamada kullanılır.
+GUARDIAN_AGENT_TRUSTED_HOST_KEY=/etc/ssh/ssh_host_ed25519_key.pub
+```
 
 ### Adım 6: Web Arayüzü (UI) Kurulumu ve Nginx Yapılandırması
 
@@ -228,30 +360,77 @@ sudo docker ps
     sudo nano /etc/nginx/sites-available/guardian
     ```
     `server_name` ve `proxy_pass` direktiflerini sunucunuzun IP'si ile güncelleyerek yapıştırın:
-    ```nginx
-    server {
-        listen 80;
-        server_name SUNUCU_IP_ADRESINIZ; # örn: 10.2.60.185
+    
+```nginx
+# ##################################################################
+# #          Guardian Web Arayüzü (UI) için Nginx Yapılandırması    #
+# ##################################################################
+#
+# Bu yapılandırma, iki temel görevi yerine getirir:
+# 1. /var/www/guardian-ui dizinindeki statik dosyaları (HTML, CSS, JS) sunar.
+# 2. /api/ ile başlayan tüm istekleri, arka planda çalışan Guardian Server'a
+#    (port 5555) yönlendirir (Reverse Proxy).
 
-        root /var/www/guardian-ui;
-        index index.html;
+server {
+    # --- Temel Sunucu Ayarları ---
+    # Nginx'in 80 numaralı porttan gelen HTTP isteklerini dinlemesini sağlar.
+    # DİKKAT: Production (canlı) ortamı için 443 portu (HTTPS) ile
+    # SSL/TLS sertifikası kullanmanız şiddetle tavsiye edilir.
+    listen 80;
 
-        location / {
-            try_files $uri $uri/ /index.html;
-        }
+    # Bu yapılandırmanın hangi alan adı veya IP adresi için geçerli olduğunu belirtir.
+    # 'SUNUCU_IP_ADRESINIZ' kısmını kendi sunucunuzun IP adresi veya alan adı ile değiştirin.
+    server_name 10.10.10.2; # örn: 10.10.10.2 veya guardian.sirketim.com
 
-        location /api/ {
-            proxy_pass https://SUNUCU_IP_ADRESINIZ:5555; # örn: https://10.2.60.185:5555
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
+    # --- Web Arayüzü (UI) Dosyalarını Sunma ---
+    # Statik dosyaların bulunduğu ana dizin.
+    root /var/www/guardian-ui;
+    # Bir dizin istendiğinde varsayılan olarak sunulacak dosya.
+    index index.html;
+
+    # Gelen tüm istekler için bu blok çalışır.
+    location / {
+        # Bu satır, React, Vue, Angular gibi Modern JavaScript (SPA)
+        # uygulamaları için hayati önem taşır.
+        # 1. Önce istenen URI'nin bir dosya olup olmadığını kontrol eder ($uri).
+        # 2. Dosya değilse, bir dizin olup olmadığını kontrol eder ($uri/).
+        # 3. İkisi de değilse, isteği /index.html dosyasına yönlendirir.
+        # Bu, tarayıcıda /dashboard gibi sanal yolların yenilendiğinde
+        # 404 hatası vermemesini ve uygulamanın JavaScript'inin yönlendirmeyi
+        # devralmasını sağlar.
+        try_files $uri $uri/ /index.html;
     }
-    ```
+
+    # --- API İsteklerini Arka Uç Sunucusuna Yönlendirme (Reverse Proxy) ---
+    # Sadece '/api/' ile başlayan istekler bu bloğa girer.
+    location /api/ {
+        # İsteği, arka planda çalışan Guardian Server uygulamasına yönlendirir.
+        # 'SUNUCU_IP_ADRESINIZ' kısmını kendi sunucunuzun IP adresi ile değiştirin.
+        # Port (5555), server.conf dosyasındaki GUARDIAN_SERVER_PORT ile eşleşmelidir.
+        proxy_pass https://10.10.10.2:5555; # örn: https://10.10.10.2:5555
+
+        # --- İstemci Bilgilerini Arka Uca İletme ---
+        # Bu başlıklar, Guardian Server'ın isteğin doğrudan Nginx'ten değil,
+        # gerçek kullanıcıdan geldiğini anlamasını sağlar.
+
+        # İsteğin yapıldığı orijinal 'Host' başlığını korur.
+        proxy_set_header Host $host;
+        # Kullanıcının gerçek IP adresini arka uca iletir.
+        proxy_set_header X-Real-IP $remote_addr;
+        # Proxy zincirindeki tüm IP'leri içeren standart başlık.
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # Orijinal isteğin protokolünü (http veya https) arka uca bildirir.
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # --- WebSocket Desteği için Ayarlar ---
+        # Bu üç satır, WebSocket bağlantılarının (canlı veri akışı vb. için)
+        # proxy üzerinden sorunsuz bir şekilde çalışmasını sağlar.
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
 
 3.  **Siteyi Aktifleştirin:**
     ```bash
