@@ -455,7 +455,7 @@ Lütfen aşağıdaki bağlantılara tıklayarak ilgili adımları takip edin:
 Bu adımda, oluşturulan sertifikaları sunucuya kopyalayıp tüm Guardian dosyalarının izinlerini güvenli hale getireceğiz.
 
 1.  **Sertifikaları Kopyalama:**
-    Bu sunucu için gerekli olan TLS sertifikalarının oluşturulması ve dağıtımı, ana `README.md` dosyasındaki **"TLS Sertifikalarını Oluşturma ve Dağıtma"** bölümünde detaylı olarak anlatılmıştır. Lütfen o bölümdeki adımları takip ederek aşağıdaki dosyaları bu sunucudaki `/etc/guardian/certs/` dizinine kopyalayın:
+    Bu sunucu için gerekli olan TLS sertifikalarının oluşturulması ve dağıtımı, ana `README.md` dosyasındaki **TLS Sertifikalarını Oluşturma ve Dağıtma](./generate-certs-usage.md)** bölümünde detaylı olarak anlatılmıştır. Lütfen o bölümdeki adımları takip ederek aşağıdaki dosyaları bu sunucudaki `/etc/guardian/certs/` dizinine kopyalayın:
     *   `ca.crt`
     *   `server.crt`
     *   `server.key`
