@@ -440,11 +440,15 @@ server {
 
 ### Adım 7: Sunucuya Özel Agent Adımlarını ve `sshd`'yi Yapılandırma
 
-Bu sunucu aynı zamanda bir agent barındıracağı için, **Guardian Agent Kurulumu** rehberindeki aşağıdaki adımları bu sunucuya da uygulamanız gerekmektedir:
+Bu sunucu aynı zamanda bir agent barındıracağı için, **[Guardian Agent Kurulumu](./agent-setup.md)** rehberindeki bazı adımları bu sunucuya da uygulamanız gerekmektedir.
 
-*   `Adım 2: Agent için SSH Anahtar Çifti Oluşturma`
-*   `Adım 4: Agent Public Anahtarını Yetkilendirme...`
-*   `Adım 7: sshd_config Dosyasını Güvenli Hale Getirme`
+Lütfen aşağıdaki bağlantılara tıklayarak ilgili adımları takip edin:
+
+*   [`Adım 2: Agent için SSH Anahtar Çifti Oluşturma`](./agent-setup.md#adım-2-agent-için-ssh-anahtar-çifti-oluşturma)
+*   [`Adım 4: Agent Public Anahtarını Yetkilendirme`](./agent-setup.md#adım-4-agent-public-anahtarını-yetkilendirme)
+*   [`Adım 7: sshd_config Dosyasını Güvenli Hale Getirme`](./agent-setup.md#adım-7-sshd_config-dosyasını-güvenli-hale-getirme)
+
+---
 
 ### Adım 8: Sertifikaları Yerleştirme ve Güvenliği Sağlama
 
