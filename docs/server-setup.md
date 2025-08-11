@@ -444,11 +444,11 @@ Bu sunucu aynı zamanda bir agent barındıracağı için, **[Guardian Agent Kur
 
 Lütfen aşağıdaki bağlantılara tıklayarak ilgili adımları takip edin:
 
-*   [`Adım 2: Agent için SSH Anahtar Çifti Oluşturma`](./agent-setup.md#adım-2-agent-için-ssh-anahtar-çifti-oluşturma)
-*   [`Adım 4: Agent Public Anahtarını Yetkilendirme`](./agent-setup.md#adım-4-agent-public-anahtarını-yetkilendirme)
+*   [`Adım 2: Agent için SSH Anahtar Çifti Oluşturma`](./agent-setup.md#adım-2-dizinleri-ve-yapılandırma-dosyalarını-oluşturma)
+*   [`Adım 4: Agent Public Anahtarını Yetkilendirme`](./agent-setup.md#adım-4-agent-public-anahtarını-yetkilendirme-ve-kullanıcıları-gruba-ekleme)
 *   [`Adım 7: sshd_config Dosyasını Güvenli Hale Getirme`](./agent-setup.md#adım-7-sshd_config-dosyasını-güvenli-hale-getirme)
 
----
+
 
 ### Adım 8: Sertifikaları Yerleştirme ve Güvenliği Sağlama
 
