@@ -2,9 +2,9 @@ openapi: 3.0.0
 info:
   title: Guardian API
   description: "Geçici ve denetlenebilir SSH erişimi sağlayan Guardian sisteminin API dökümanı. API, bir merkezi sunucu (guardian-server) ve hedef makinelerdeki ajanlardan (guardian-agent) oluşur."
-  version: "1.3.0" # Sürüm güncellendi
+  version: "1.3.0"
 servers:
-  - url: https://localhost:5555/api
+  - url: https://server_ip:5555/api
     description: Yerel Geliştirme Sunucusu
 
 components:
@@ -13,7 +13,7 @@ components:
     AdminBearerAuth:
       type: http
       scheme: bearer
-      description: "Yönetici işlemlerini yapmak için gereken JWT/Bearer token. .env dosyasındaki GUARDIAN_ADMIN_TOKEN."
+      description: "Yönetici (UI/CLI) işlemlerini yapmak için gereken JWT/Bearer token. .env dosyasındaki GUARDIAN_ADMIN_TOKEN."
     AgentBearerAuth:
       type: http
       scheme: bearer
@@ -21,6 +21,29 @@ components:
 
   # ------ VERİ MODELLERİ (SCHEMAS) ------
   schemas:
+    # --- YENİDEN KULLANILABİLİR MODELLER ---
+    NullString:
+      type: object
+      description: "Go backend'indeki sql.NullString yapısını temsil eder. Bir alanın `null` olabilmesini sağlar."
+      properties:
+        String:
+          type: string
+          description: "Alanının metin değeri. Eğer Valid false ise bu değerin bir anlamı yoktur."
+        Valid:
+          type: boolean
+          description: "Eğer true ise String değeri geçerlidir. Eğer false ise alan veritabanında NULL olarak kabul edilir."
+      example:
+        String: "Opsiyonel açıklama"
+        Valid: true
+        
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Hata mesajı burada yer alır."
+
+    # --- KAYNAK MODELLERİ ---
     AuthStatus:
       type: object
       properties:
@@ -30,6 +53,7 @@ components:
 
     Server:
       type: object
+      required: [hostname, ip_address]
       properties:
         id:
           type: integer
@@ -52,6 +76,7 @@ components:
 
     SystemUser:
       type: object
+      required: [username]
       properties:
         id:
           type: integer
@@ -61,8 +86,7 @@ components:
           type: string
           example: "ec2-user"
         description:
-          type: string
-          example: "AWS EC2 instance default user"
+          $ref: '#/components/schemas/NullString'
         created_at:
           type: string
           format: date-time
@@ -71,6 +95,7 @@ components:
 
     PublicKey:
       type: object
+      required: [key_name, ssh_public_key]
       properties:
         id:
           type: integer
@@ -85,6 +110,7 @@ components:
         fingerprint_sha256:
           type: string
           example: "SHA256:AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -93,6 +119,7 @@ components:
 
     AccessRule:
       type: object
+      required: [server_id, public_key_id, system_user_id, valid_from, valid_until]
       properties:
         id:
           type: integer
@@ -117,15 +144,30 @@ components:
           example: "2024-07-04T13:00:00Z"
         status:
           type: string
-          example: "active" # pending, active, expired
+          enum: [pending, active, expired]
+          example: "active"
           readOnly: true
         created_at:
           type: string
           format: date-time
           example: "2024-07-04T11:55:00Z"
           readOnly: true
+    
+    AccessRuleDetails:
+      allOf:
+        - $ref: '#/components/schemas/AccessRule'
+        - type: object
+          properties:
+            server_hostname:
+              type: string
+              example: "production-web-1"
+            username:
+              type: string
+              example: "ec2-user"
+            key_name:
+              type: string
+              example: "devops-team-lead-key"
 
-    # YENİ: Oturum listeleme için model
     Session:
       type: object
       properties:
@@ -148,39 +190,127 @@ components:
           nullable: true
         status:
           type: string
+          example: "active"
+        server_hostname:
+          type: string
+          readOnly: true
+        server_ip:
+          type: string
+          readOnly: true
 
+    # --- SAYFALAMA (PAGINATION) MODELLERİ ---
+    PaginatedServersResponse:
+      type: object
+      properties:
+        total_records: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Server'
+            
+    PaginatedUsersResponse:
+      type: object
+      properties:
+        total_records: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SystemUser'
+
+    PaginatedKeysResponse:
+      type: object
+      properties:
+        total_records: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicKey'
+            
+    PaginatedRulesResponse:
+      type: object
+      properties:
+        total_records: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessRuleDetails'
+            
+    PaginatedSessionsResponse:
+      type: object
+      properties:
+        total_records: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+            
+    # --- DASHBOARD MODELLERİ ---
+    DashboardStats:
+      type: object
+      properties:
+        active_sessions: { type: integer }
+        expired_rules: { type: integer }
+        total_servers: { type: integer }
+        total_users: { type: integer }
+        pending_rules: { type: integer }
+        total_keys: { type: integer }
+        today_sessions: { type: integer }
+        failed_sessions: { type: integer }
+        
+    ChartData:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: integer
+          
+    ActiveSessionInfo:
+      type: object
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        start_time: { type: string, format: date-time }
+        server_hostname: { type: string }
+        
+    AuditLog:
+      type: object
+      properties:
+        id: { type: integer }
+        admin_ref: { type: string }
+        action: { type: string }
+        target_type: { type: string }
+        target_id: { type: integer, nullable: true }
+        status: { type: string }
+        error_message: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        
+    # --- OTURUM DETAY MODELLERİ ---
     SessionEvent:
       type: object
       properties:
-        id:
-          type: integer
-          readOnly: true
-        session_id:
-          type: integer
-        event_type:
-          type: string
-          example: "output" # "input" veya "output"
-        data:
-          type: string
-          format: byte
-          description: "Base64 encoded terminal data"
-          example: "bHMgLWxhCg==" # "ls -la\n" in base64
-        event_time:
-          type: string
-          format: date-time
+        id: { type: integer, readOnly: true }
+        session_id: { type: integer }
+        event_type: { type: string, enum: [input, output] }
+        data: { type: string, format: byte, description: "Base64 encoded terminal data" }
+        event_time: { type: string, format: date-time }
 
     ParsedCommand:
       type: object
       properties:
-        timestamp:
-          type: string
-          format: date-time
-        command:
-          type: string
-          example: "ls -la"
-        output:
-          type: string
-          example: "total 8\ndrwxr-xr-x 2 user group 4096 Jul  4 12:30 .\ndrwxr-xr-x 5 user group 4096 Jul  4 12:00 .."
+        timestamp: { type: string, format: date-time }
+        command: { type: string }
+        output: { type: string }
 
     SessionDetails:
       type: object
@@ -188,34 +318,17 @@ components:
         session_info:
           type: object
           properties:
-            id:
-              type: integer
-            username:
-              type: string
-            server_hostname:
-              type: string
-            server_ip:
-              type: string
-            start_time:
-              type: string
-              format: date-time
-            end_time:
-              type: string
-              format: date-time
-              nullable: true
-            status:
-              type: string
+            id: { type: integer }
+            username: { type: string }
+            server_hostname: { type: string }
+            server_ip: { type: string }
+            start_time: { type: string, format: date-time }
+            end_time: { type: string, format: date-time, nullable: true }
+            status: { type: string }
         commands:
           type: array
           items:
             $ref: '#/components/schemas/ParsedCommand'
-
-    ApiError:
-      type: object
-      properties:
-        error:
-          type: string
-          example: "Hata mesajı burada yer alır."
 
 # ------ YOLLAR (PATHS) ------
 paths:
@@ -235,28 +348,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthStatus'
         '401':
-          description: Yetkisiz (Token eksik veya geçersiz)
+          description: Yetkisiz (Token eksik)
         '403':
-          description: Yetkisiz (Token geçersiz)
+          description: Yasak (Token geçersiz)
 
   # ------ Sunucu Yönetimi ------
   /servers:
     get:
       tags: [Server Management]
-      summary: Tüm sunucuları listele
+      summary: Sunucuları sayfalama ile listele
       security:
         - AdminBearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 8 }
       responses:
         '200':
-          description: Başarılı yanıt
+          description: Başarılı yanıt, sunucuların listesi
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Server'
-        '401':
-          description: Yetkisiz (Token eksik veya geçersiz)
+                $ref: '#/components/schemas/PaginatedServersResponse'
     post:
       tags: [Server Management]
       summary: Yeni bir sunucu oluştur
@@ -267,17 +383,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                hostname:
-                  type: string
-                  example: "staging-db-1"
-                ip_address:
-                  type: string
-                  example: "10.0.0.5"
-                description:
-                  type: string
-                  example: "Staging veritabanı sunucusu"
+              $ref: '#/components/schemas/Server'
       responses:
         '201':
           description: Sunucu başarıyla oluşturuldu
@@ -293,8 +399,7 @@ paths:
       - name: serverID
         in: path
         required: true
-        schema:
-          type: integer
+        schema: { type: integer }
     get:
       tags: [Server Management]
       summary: Belirli bir sunucuyu getir
@@ -311,7 +416,8 @@ paths:
           description: Sunucu bulunamadı
     put:
       tags: [Server Management]
-      summary: Bir sunucuyu tamamen güncelle
+      summary: Bir sunucuyu tamamen güncelle (Tüm alanlar gereklidir)
+      description: Bir sunucunun tüm alanlarını (hostname, ip_address, description) tek seferde günceller. Sadece bir alanı değiştirmek için PATCH kullanın.
       security:
         - AdminBearerAuth: []
       requestBody:
@@ -324,15 +430,15 @@ paths:
         '200':
           description: Başarıyla güncellendi
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-                example: "Sunucu 1 başarıyla güncellendi."
+                $ref: '#/components/schemas/Server'
         '404':
           description: Sunucu bulunamadı
     patch:
       tags: [Server Management]
       summary: Bir sunucuyu kısmen güncelle
+      description: Bir sunucunun bir veya daha fazla alanını (hostname, ip_address, description) günceller.
       security:
         - AdminBearerAuth: []
       requestBody:
@@ -342,12 +448,16 @@ paths:
             schema:
               type: object
               properties:
-                description:
-                  type: string
-                  example: "Staging veritabanı (PostgreSQL 14)"
+                hostname: { type: string }
+                ip_address: { type: string }
+                description: { type: string }
       responses:
         '200':
           description: Başarıyla güncellendi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
         '404':
           description: Sunucu bulunamadı
     delete:
@@ -362,23 +472,32 @@ paths:
           description: Sunucu bulunamadı
         '409':
           description: "Çakışma. Sunucu, bir veya daha fazla erişim kuralı tarafından kullanıldığı için silinemiyor."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
 
   # ------ Kullanıcı Yönetimi ------
   /users:
     get:
       tags: [User Management]
-      summary: Tüm sistem kullanıcılarını listele
+      summary: Sistem kullanıcılarını sayfalama ile listele
       security:
         - AdminBearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 8 }
       responses:
         '200':
           description: Başarılı yanıt
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/SystemUser'
+                $ref: '#/components/schemas/PaginatedUsersResponse'
     post:
       tags: [User Management]
       summary: Yeni bir sistem kullanıcısı tanımla
@@ -389,14 +508,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                username:
-                  type: string
-                  example: "root"
-                description:
-                  type: string
-                  example: "Süper kullanıcı"
+              $ref: '#/components/schemas/SystemUser'
       responses:
         '201':
           description: Kullanıcı oluşturuldu
@@ -410,9 +522,7 @@ paths:
       - name: userID
         in: path
         required: true
-        description: İşlem yapılacak kullanıcının ID'si
-        schema:
-          type: integer
+        schema: { type: integer }
     get:
       tags: [User Management]
       summary: Belirli bir sistem kullanıcısını getir
@@ -429,11 +539,10 @@ paths:
           description: Kullanıcı bulunamadı
     patch:
       tags: [User Management]
-      summary: Bir sistem kullanıcısını kısmen güncelle
+      summary: Bir sistem kullanıcısının açıklamasını güncelle
       security:
         - AdminBearerAuth: []
       requestBody:
-        description: "Güncellenecek alanları içeren JSON objesi. Şu anda sadece 'description' desteklenmektedir."
         required: true
         content:
           application/json:
@@ -441,8 +550,7 @@ paths:
               type: object
               properties:
                 description:
-                  type: string
-                  example: "Root kullanıcısı - sadece acil durumlarda kullanılmalı"
+                  $ref: '#/components/schemas/NullString'
       responses:
         '200':
           description: Kullanıcı başarıyla güncellendi
@@ -450,8 +558,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SystemUser'
-        '400':
-          description: Geçersiz istek gövdesi
         '404':
           description: Kullanıcı bulunamadı
     delete:
@@ -465,29 +571,33 @@ paths:
         '404':
           description: Silinecek kullanıcı bulunamadı
         '409':
-          description: "Çakışma. Kullanıcı, bir veya daha fazla erişim kuralı tarafından kullanıldığı için silinemiyor."
+          description: "Çakışma. Kullanıcı, bir kural tarafından kullanıldığı için silinemiyor."
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-                example: "Kullanıcı silinemiyor. Bu kullanıcı 1 adet kural tarafından kullanılıyor. Lütfen önce ilgili kuralları silin."
+                $ref: '#/components/schemas/ApiError'
 
   # ------ Anahtar Yönetimi ------
   /keys:
     get:
       tags: [Key Management]
-      summary: Tüm public anahtarları listele
+      summary: Public anahtarları sayfalama ile listele
       security:
         - AdminBearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 8 }
       responses:
         '200':
           description: Başarılı yanıt
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/PublicKey'
+                $ref: '#/components/schemas/PaginatedKeysResponse'
     post:
       tags: [Key Management]
       summary: Yeni bir public anahtar kaydet
@@ -498,14 +608,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                key_name:
-                  type: string
-                  example: "jane-doe-laptop-key"
-                ssh_public_key:
-                  type: string
-                  example: "ssh-ed25519 AAAAC3... jane.doe@example.com"
+              $ref: '#/components/schemas/PublicKey'
       responses:
         '201':
           description: Anahtar oluşturuldu
@@ -513,15 +616,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicKey'
+        '400':
+          description: Geçersiz public anahtar formatı
 
   /keys/{keyID}:
     parameters:
       - name: keyID
         in: path
         required: true
-        description: İşlem yapılacak anahtarın ID'si
-        schema:
-          type: integer
+        schema: { type: integer }
     get:
       tags: [Key Management]
       summary: Belirli bir public anahtarı getir
@@ -567,33 +670,37 @@ paths:
         - AdminBearerAuth: []
       responses:
         '204':
-          description: Anahtar başarıyla silindi (İçerik yok)
+          description: Anahtar başarıyla silindi
         '404':
           description: Silinecek anahtar bulunamadı
         '409':
-          description: "Çakışma. Anahtar, bir veya daha fazla erişim kuralı tarafından kullanıldığı için silinemiyor."
+          description: "Çakışma. Anahtar, bir kural tarafından kullanıldığı için silinemiyor."
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-                example: "Anahtar silinemiyor. Bu anahtar 1 adet aktif/bekleyen kural tarafından kullanılıyor. Lütfen önce ilgili kuralları silin."
+                $ref: '#/components/schemas/ApiError'
 
   # ------ Kural Yönetimi ------
   /rules:
     get:
       tags: [Rule Management]
-      summary: Tüm erişim kurallarını listele
+      summary: Erişim kurallarını sayfalama ile listele
       security:
         - AdminBearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 8 }
       responses:
         '200':
           description: Başarılı yanıt
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/AccessRule'
+                $ref: '#/components/schemas/PaginatedRulesResponse'
     post:
       tags: [Rule Management]
       summary: Yeni bir erişim kuralı oluştur
@@ -604,25 +711,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                server_id:
-                  type: integer
-                  example: 1
-                public_key_id:
-                  type: integer
-                  example: 1
-                system_user_id:
-                  type: integer
-                  example: 1
-                valid_from:
-                  type: string
-                  format: date-time
-                  example: "2024-07-04T15:00:00Z"
-                valid_until:
-                  type: string
-                  format: date-time
-                  example: "2024-07-04T16:00:00Z"
+              $ref: '#/components/schemas/AccessRule'
       responses:
         '201':
           description: Kural oluşturuldu
@@ -630,14 +719,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccessRule'
+        '400':
+          description: Hedef sunucudaki kullanıcı doğrulanamadı veya geçersiz ID'ler.
 
   /rules/{ruleID}:
     parameters:
       - name: ruleID
         in: path
         required: true
-        schema:
-          type: integer
+        schema: { type: integer }
     get:
       tags: [Rule Management]
       summary: Belirli bir kuralı getir
@@ -672,7 +762,8 @@ paths:
                 $ref: '#/components/schemas/AccessRule'
     patch:
       tags: [Rule Management]
-      summary: Bir kuralı kısmen güncelle
+      summary: Bir kuralın zamanını güncelle
+      description: Bir kuralın 'valid_from' ve 'valid_until' zamanlarını günceller. Bu işlem kuralın durumunu (pending, active, expired) otomatik olarak yeniden hesaplar.
       security:
         - AdminBearerAuth: []
       requestBody:
@@ -681,13 +772,23 @@ paths:
           application/json:
             schema:
               type: object
+              required: [valid_from, valid_until]
               properties:
-                status:
+                valid_from:
                   type: string
-                  example: "expired"
+                  format: date-time
+                valid_until:
+                  type: string
+                  format: date-time
       responses:
         '200':
           description: Başarıyla güncellendi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessRule'
+        '404':
+          description: Kural bulunamadı
     delete:
       tags: [Rule Management]
       summary: Bir kuralı sil
@@ -698,28 +799,28 @@ paths:
           description: Başarıyla silindi
         '404':
           description: Kural bulunamadı
-        '503':
-          description: Agent'a erişilemedi, kural silinemedi.
 
-  # ------ Oturum Yönetimi ------
+  # ------ Oturum Yönetimi (Admin & Agent) ------
   /sessions:
     get:
       tags: [Session Management]
-      summary: Tüm oturumları listele
-      description: Sistemdeki geçmiş ve aktif tüm oturumların bir listesini döndürür.
+      summary: Oturumları sayfalama ile listele (Yönetici)
       security:
         - AdminBearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 8 }
       responses:
         '200':
-          description: Başarılı yanıt, oturumların listesi
+          description: Başarılı yanıt
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Session'
-        '401':
-          description: Yetkisiz
+                $ref: '#/components/schemas/PaginatedSessionsResponse'
     post:
       tags: [Session Management]
       summary: Yeni bir oturum başlat (Agent tarafından kullanılır)
@@ -732,15 +833,9 @@ paths:
             schema:
               type: object
               properties:
-                rule_id:
-                  type: integer
-                  example: 1
-                server_id:
-                  type: integer
-                  example: 1
-                username:
-                  type: string
-                  example: "ec2-user"
+                rule_id: { type: integer }
+                server_id: { type: integer }
+                username: { type: string }
       responses:
         '201':
           description: Oturum oluşturuldu
@@ -749,21 +844,15 @@ paths:
               schema:
                 type: object
                 properties:
-                  id:
-                    type: integer
-                    example: 42
-                  valid_until:
-                    type: string
-                    format: date-time
-                    nullable: true
+                  id: { type: integer }
+                  valid_until: { type: string, format: date-time, nullable: true }
 
   /sessions/{sessionID}:
     parameters:
       - name: sessionID
         in: path
         required: true
-        schema:
-          type: integer
+        schema: { type: integer }
     patch:
       tags: [Session Management]
       summary: Oturum durumunu güncelle (Agent tarafından kullanılır)
@@ -778,7 +867,7 @@ paths:
               properties:
                 status:
                   type: string
-                  example: "ended" # "ended" veya "timed_out"
+                  example: "ended"
       responses:
         '200':
           description: Oturum güncellendi
@@ -790,6 +879,11 @@ paths:
       responses:
         '200':
           description: Sonlandırma komutu gönderildi
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Oturum 42 için sonlandırma komutu başarıyla gönderildi ve durum güncellendi."
         '404':
           description: Aktif oturum bulunamadı
 
@@ -803,8 +897,7 @@ paths:
         - name: sessionID
           in: path
           required: true
-          schema:
-            type: integer
+          schema: { type: integer }
       responses:
         '200':
           description: Oturum olaylarının listesi
@@ -827,8 +920,7 @@ paths:
         - name: sessionID
           in: path
           required: true
-          schema:
-            type: integer
+          schema: { type: integer }
       responses:
         '200':
           description: Oturum detayları ve komut listesi
@@ -838,6 +930,139 @@ paths:
                 $ref: '#/components/schemas/SessionDetails'
         '404':
           description: Oturum bulunamadı
+
+  # ------ Dashboard ------
+  /dashboard/stats:
+    get:
+      tags: [Dashboard]
+      summary: Genel sistem istatistiklerini al
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: İstatistik verileri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+
+  /dashboard/session-activity:
+    get:
+      tags: [Dashboard]
+      summary: Son 7 günlük oturum aktivitesini al
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Grafik verisi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChartData'
+
+  /dashboard/top-servers:
+    get:
+      tags: [Dashboard]
+      summary: En çok oturum açılan ilk 5 sunucuyu al
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Grafik verisi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChartData'
+
+  /dashboard/active-sessions:
+    get:
+      tags: [Dashboard]
+      summary: Son 5 aktif oturumu listele
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Aktif oturum listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActiveSessionInfo'
+
+  /dashboard/audit-stream:
+    get:
+      tags: [Dashboard]
+      summary: Son 5 denetim kaydını al
+      security:
+        - AdminBearerAuth: []
+      responses:
+        '200':
+          description: Denetim kaydı listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditLog'
+
+# ------ Agent Endpoints ------
+  /agent/sessions:
+    post:
+      tags: [Agent Communication]
+      summary: Yeni bir oturum başlat (Agent tarafından kullanılır)
+      security:
+        - AgentBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rule_id: { type: integer }
+                server_id: { type: integer }
+                username: { type: string }
+      responses:
+        '201':
+          description: Oturum oluşturuldu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  valid_until: { type: string, format: date-time, nullable: true }
+
+  /agent/sessions/{sessionID}:
+    patch:
+      tags: [Agent Communication]
+      summary: Oturum durumunu güncelle (Agent tarafından kullanılır)
+      security:
+        - AgentBearerAuth: []
+      parameters:
+        - name: sessionID
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: "ended"
+      responses:
+        '200':
+          description: Oturum güncellendi
+
 
   # ------ WebSocket ------
   /ws/sessions/{sessionID}:
@@ -852,8 +1077,7 @@ paths:
         - name: sessionID
           in: path
           required: true
-          schema:
-            type: integer
+          schema: { type: integer }
         - name: role
           in: query
           schema:
