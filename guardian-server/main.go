@@ -93,12 +93,16 @@ func main() {
 
 	r.Route("/api", func(r chi.Router) {
 
-		r.Get("/ws/sessions/{sessionID}", handlers.SessionStreamHandler(db, wsHub))
-
 		r.Group(func(r chi.Router) {
 			r.Use(handlers.AgentAuth)
 			r.Post("/agent/sessions", handlers.StartSession(db))
 			r.Patch("/agent/sessions/{sessionID}", handlers.EndSession(db))
+			r.Get("/agent/ws/sessions/{sessionID}", handlers.AgentSessionStreamHandler(db, wsHub))
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(handlers.AdminWSAuth)
+			r.Get("/ws/sessions/{sessionID}", handlers.ViewerSessionStreamHandler(wsHub))
 		})
 
 		r.Group(func(r chi.Router) {

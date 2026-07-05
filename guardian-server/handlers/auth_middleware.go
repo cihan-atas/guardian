@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"os"
 	"strings"
@@ -29,15 +30,11 @@ func AdminAuth(next http.Handler) http.Handler {
 		}
 
 		if token == "" {
-			token = r.URL.Query().Get("token")
-		}
-
-		if token == "" {
-			http.Error(w, "Yetki bilgisi (token) bulunamadı (ne başlıkta ne de URL parametresinde).", http.StatusUnauthorized)
+			http.Error(w, "Yetki bilgisi (token) bulunamadı ('Authorization: Bearer <token>' başlığı bekleniyor).", http.StatusUnauthorized)
 			return
 		}
 
-		if token != expectedToken {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(expectedToken)) != 1 {
 			http.Error(w, "Geçersiz veya yetkisiz token.", http.StatusForbidden)
 			return
 		}

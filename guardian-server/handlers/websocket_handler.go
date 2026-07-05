@@ -18,22 +18,31 @@ var wsUpgrader = websocket.Upgrader{
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
-func SessionStreamHandler(db *sql.DB, h *hub.Hub) http.HandlerFunc {
+// ViewerSessionStreamHandler, web arayüzündeki canlı izleyicilerin bağlandığı
+// (yalnızca okuma amaçlı) WebSocket endpoint'idir. AdminWSAuth middleware'i
+// ile korunur.
+func ViewerSessionStreamHandler(h *hub.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID, err := strconv.Atoi(chi.URLParam(r, "sessionID"))
 		if err != nil {
 			http.Error(w, "Geçersiz oturum ID'si", http.StatusBadRequest)
 			return
 		}
+		log.Printf("Canlı izleme isteği alındı: Session ID %d", sessionID)
+		h.ServeWs(w, r, sessionID)
+	}
+}
 
-		role := r.URL.Query().Get("role")
-
-		if role == "viewer" {
-			log.Printf("Canlı izleme isteği alındı: Session ID %d", sessionID)
-			h.ServeWs(w, r, sessionID)
+// AgentSessionStreamHandler, guardian-agent'ın oturum kaydını (input/output/
+// heartbeat) gönderdiği WebSocket endpoint'idir. AgentAuth middleware'i ile
+// korunur.
+func AgentSessionStreamHandler(db *sql.DB, h *hub.Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "sessionID"))
+		if err != nil {
+			http.Error(w, "Geçersiz oturum ID'si", http.StatusBadRequest)
 			return
 		}
-
 		handleAgentConnection(w, r, db, h, sessionID)
 	}
 }

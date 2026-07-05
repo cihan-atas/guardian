@@ -184,7 +184,7 @@ func getRuleValidity(ruleID int, config *Config) (*time.Time, error) {
 }
 
 func connectWebSocket(sessionID int, config *Config) *websocket.Conn {
-	wsURL := fmt.Sprintf("%s:%s/api/ws/sessions/%d", strings.Replace(config.ServerHost, "https", "wss", 1), config.ServerPort, sessionID)
+	wsURL := fmt.Sprintf("%s:%s/api/agent/ws/sessions/%d", strings.Replace(config.ServerHost, "https", "wss", 1), config.ServerPort, sessionID)
 	dialer := websocket.Dialer{TLSClientConfig: createApiClient().Transport.(*http.Transport).TLSClientConfig}
 	ws, _, err := dialer.Dial(wsURL, http.Header{"Authorization": {"Bearer " + config.SecretToken}})
 	if err != nil {
@@ -305,7 +305,6 @@ func startSessionOnServer(ruleID int, config *Config) (int, *time.Time, error) {
 		return 0, nil, fmt.Errorf("HTTP isteği oluşturulamadı: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	log.Printf("[DEBUG] Agent'ın server'a gönderdiği Authorization header: 'Bearer %s'", config.SecretToken)
 	req.Header.Set("Authorization", "Bearer "+config.SecretToken)
 	resp, err := createApiClient().Do(req)
 	if err != nil {

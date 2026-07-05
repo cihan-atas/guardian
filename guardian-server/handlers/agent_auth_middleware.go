@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"context"
-	"log"
+	"crypto/subtle"
 	"net/http"
 	"os"
 	"strings"
@@ -37,8 +37,7 @@ func AgentAuth(next http.Handler) http.Handler {
 			http.Error(w, "Geçersiz token formatı. 'Bearer <token>' bekleniyor.", http.StatusUnauthorized)
 			return
 		}
-		log.Printf("[DEBUG] Server tarafı: Gelen token: '%s', Beklenen: '%s'", token, expectedToken)
-		if token != expectedToken {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(expectedToken)) != 1 {
 			http.Error(w, "Geçersiz veya yetkisiz ajan token'ı.", http.StatusForbidden)
 			return
 		}
