@@ -103,7 +103,8 @@ func handleProxy() {
 		log.Fatal("FATAL: GUARDIAN_AGENT_SERVER_ID ortam değişkeni proxy modu için ayarlanmalıdır.")
 	}
 
-	ruleID, sessionID := parseFlagsAndStartSession(config)
+	width, height := getTerminalSize()
+	ruleID, sessionID := parseFlagsAndStartSession(config, width, height)
 	log.Printf("✅ Sunucuda oturum başarıyla başlatıldı. Session ID: %d", sessionID)
 
 	if err := createPidFile(sessionID); err != nil {
@@ -146,7 +147,7 @@ func handleProxy() {
 		go enforceSessionTimeout(session, sessionID, *validUntil, config)
 	}
 
-	setupPipes(session, ws)
+	setupPipes(session, ws, width, height)
 
 	if err := session.Shell(); err != nil {
 		endSessionOnServer(sessionID, "error_shell", config)
@@ -161,7 +162,7 @@ func handleProxy() {
 	}
 }
 
-func parseFlagsAndStartSession(config *Config) (int, int) {
+func parseFlagsAndStartSession(config *Config, width, height int) (int, int) {
 	proxyFlags := flag.NewFlagSet("proxy", flag.ExitOnError)
 	ruleID := proxyFlags.Int("rule-id", 0, "Oturumla ilişkili erişim kuralı ID'si")
 	if err := proxyFlags.Parse(os.Args[2:]); err != nil {
@@ -172,7 +173,7 @@ func parseFlagsAndStartSession(config *Config) (int, int) {
 	}
 	log.Printf("🚀 SSH Proxy modu başlatıldı. Kural ID: %d", *ruleID)
 
-	sessionID, _, err := startSessionOnServer(*ruleID, config)
+	sessionID, _, err := startSessionOnServer(*ruleID, config, width, height)
 	if err != nil {
 		log.Fatalf("Sunucuda oturum başlatılamadı: %v", err)
 	}
@@ -261,7 +262,21 @@ func enforceSessionTimeout(session *ssh.Session, sessionID int, validUntil time.
 	session.Close()
 }
 
-func setupPipes(session *ssh.Session, ws *websocket.Conn) {
+// getTerminalSize, kaydın yapıldığı PTY boyutunu belirler. Bu boyut sunucuya
+// bildirilip DB'ye kaydedilir; tekrar oynatma/canlı izleme tarafındaki
+// terminal de aynı boyutla oluşturulmalıdır. Aksi halde mutlak imleç
+// konumlandırma ve scroll-region ANSI kodları yanlış yorumlanır (ekran bir
+// ekrandan fazla dolduğunda imlecin en üste sıçraması bu uyumsuzluktandır).
+func getTerminalSize() (width, height int) {
+	width, height, err := term.GetSize(int(os.Stdin.Fd()))
+	if err != nil {
+		width, height = 120, 30
+		log.Printf("Terminal boyutu alınamadı, varsayılan kullanılıyor: %dx%d", width, height)
+	}
+	return width, height
+}
+
+func setupPipes(session *ssh.Session, ws *websocket.Conn, width, height int) {
 	wsOutputWriter := &websocketWriter{conn: ws, eventType: "output"}
 	session.Stdout = io.MultiWriter(os.Stdout, wsOutputWriter)
 	session.Stderr = io.MultiWriter(os.Stderr, wsOutputWriter)
@@ -276,11 +291,6 @@ func setupPipes(session *ssh.Session, ws *websocket.Conn) {
 		io.Copy(io.MultiWriter(stdinPipe, wsInputWriter), os.Stdin)
 	}()
 
-	width, height, err := term.GetSize(int(os.Stdin.Fd()))
-	if err != nil {
-		width, height = 120, 30
-		log.Printf("Terminal boyutu alınamadı, varsayılan kullanılıyor: %dx%d", width, height)
-	}
 	modes := ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 14400, ssh.TTY_OP_OSPEED: 14400}
 	termType := os.Getenv("TERM")
 	if termType == "" {
@@ -292,10 +302,13 @@ func setupPipes(session *ssh.Session, ws *websocket.Conn) {
 	log.Println("✅ I/O ve PTY altyapısı kuruldu.")
 }
 
-func startSessionOnServer(ruleID int, config *Config) (int, *time.Time, error) {
+func startSessionOnServer(ruleID int, config *Config, width, height int) (int, *time.Time, error) {
 	serverURL := fmt.Sprintf("%s:%s/api/agent/sessions", config.ServerHost, config.ServerPort)
 	sshUser := os.Getenv("USER")
-	reqBody := map[string]interface{}{"rule_id": ruleID, "server_id": config.AgentServerID, "username": sshUser}
+	reqBody := map[string]interface{}{
+		"rule_id": ruleID, "server_id": config.AgentServerID, "username": sshUser,
+		"cols": width, "rows": height,
+	}
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
 		return 0, nil, fmt.Errorf("istek gövdesi JSON'a çevrilemedi: %w", err)

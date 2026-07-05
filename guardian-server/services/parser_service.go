@@ -69,8 +69,9 @@ func ParseSessionEvents(db *sql.DB, sessionID int) (*SessionDetails, error) {
 	defer rows.Close()
 
 	var commands []ParsedCommand
-	var currentInput strings.Builder
+	var currentInput []rune
 	var currentOutput strings.Builder
+	var pendingTimestamp time.Time
 
 	for rows.Next() {
 		var eventType string
@@ -82,29 +83,38 @@ func ParseSessionEvents(db *sql.DB, sessionID int) (*SessionDetails, error) {
 		}
 
 		if eventType == "input" {
-			currentInput.Write(data)
+			if len(currentInput) == 0 {
+				pendingTimestamp = eventTime
+			}
+			for _, r := range string(data) {
+				switch r {
+				case '\r', '\n':
+					command := cleanString(string(currentInput))
+					if len(command) > 0 {
+						if len(commands) > 0 {
+							// Bir önceki komutun çıktısını tamamla
+							commands[len(commands)-1].Output = cleanString(currentOutput.String())
+						}
+						// Yeni komutu ekle
+						commands = append(commands, ParsedCommand{
+							Timestamp: pendingTimestamp,
+							Command:   command,
+						})
+						currentOutput.Reset()
+					}
+					currentInput = currentInput[:0]
+				case 0x7F, 0x08: // Backspace/Delete: son karakteri geri al
+					if len(currentInput) > 0 {
+						currentInput = currentInput[:len(currentInput)-1]
+					}
+				default:
+					currentInput = append(currentInput, r)
+				}
+			}
 			continue
 		}
 
 		if eventType == "output" {
-			if strings.Contains(string(data), "\r") {
-				command := cleanString(currentInput.String())
-
-				if len(command) > 0 {
-					if len(commands) > 0 {
-						// Bir önceki komutun çıktısını tamamla
-						commands[len(commands)-1].Output = cleanString(currentOutput.String())
-					}
-					// Yeni komutu ekle
-					commands = append(commands, ParsedCommand{
-						Timestamp: eventTime,
-						Command:   command,
-					})
-					// Biriktiricileri sıfırla
-					currentInput.Reset()
-					currentOutput.Reset()
-				}
-			}
 			currentOutput.Write(data)
 		}
 	}

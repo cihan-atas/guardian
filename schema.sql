@@ -209,7 +209,9 @@ CREATE TABLE public.sessions (
     start_time timestamp with time zone DEFAULT now() NOT NULL,
     end_time timestamp with time zone,
     status character varying(50) NOT NULL,
-    last_heartbeat timestamp with time zone
+    last_heartbeat timestamp with time zone,
+    cols integer,
+    rows integer
 );
 
 

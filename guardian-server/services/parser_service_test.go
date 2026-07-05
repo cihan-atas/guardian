@@ -47,7 +47,7 @@ func TestParseSessionEvents(t *testing.T) {
 					WillReturnRows(metaRows)
 
 				eventRows := sqlmock.NewRows([]string{"event_type", "data", "event_time"}).
-					AddRow("input", []byte("ls -la"), now.Add(1*time.Second)).
+					AddRow("input", []byte("ls -la\r"), now.Add(1*time.Second)).
 					AddRow("output", []byte("total 0\r\n"), now.Add(2*time.Second)).
 					AddRow("output", []byte("drwxr-xr-x .\r\n"), now.Add(3*time.Second))
 
@@ -71,7 +71,7 @@ func TestParseSessionEvents(t *testing.T) {
 				mock.ExpectQuery(metaQuery).WithArgs(sessionID).WillReturnRows(metaRows)
 
 				eventRows := sqlmock.NewRows([]string{"event_type", "data", "event_time"}).
-					AddRow("input", []byte("grep test"), now.Add(1*time.Second)).
+					AddRow("input", []byte("grep test\r"), now.Add(1*time.Second)).
 					AddRow("output", []byte("this is a \x1b[31mtest\x1b[0m string\r\n"), now.Add(2*time.Second))
 
 				mock.ExpectQuery(eventsQuery).WithArgs(sessionID).WillReturnRows(eventRows)
@@ -80,6 +80,26 @@ func TestParseSessionEvents(t *testing.T) {
 			checkResult: func(t *testing.T, details *SessionDetails) {
 				assert.Equal(t, "grep test", details.Commands[0].Command)
 				assert.Equal(t, "this is a test string", details.Commands[0].Output)
+			},
+		},
+		{
+			name: "Başarılı - Backspace ile düzeltilen komut doğru yeniden oluşturulur",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				metaRows := sqlmock.NewRows([]string{"id", "username", "start_time", "end_time", "status", "hostname", "ip_address"}).
+					AddRow(sessionID, "testuser", now, nil, "active", "test-server", "127.0.0.1")
+
+				mock.ExpectQuery(metaQuery).WithArgs(sessionID).WillReturnRows(metaRows)
+
+				// Kullanıcı "lss" yazıp iki kez backspace yapıyor, sonra "s -la" yazıp Enter'a basıyor.
+				eventRows := sqlmock.NewRows([]string{"event_type", "data", "event_time"}).
+					AddRow("input", []byte("lss\x7f\x7fs -la\r"), now.Add(1*time.Second)).
+					AddRow("output", []byte("total 0\r\n"), now.Add(2*time.Second))
+
+				mock.ExpectQuery(eventsQuery).WithArgs(sessionID).WillReturnRows(eventRows)
+			},
+			expectedCmds: 1,
+			checkResult: func(t *testing.T, details *SessionDetails) {
+				assert.Equal(t, "ls -la", details.Commands[0].Command)
 			},
 		},
 		{

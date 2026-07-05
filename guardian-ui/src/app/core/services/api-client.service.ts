@@ -155,6 +155,17 @@ export interface SessionEvent {
   event_time: string;
 }
 
+export interface SessionReplay {
+  cols: number;
+  rows: number;
+  events: SessionEvent[];
+}
+
+export interface SessionTerminalSize {
+  cols: number;
+  rows: number;
+}
+
 export interface ChartData {
   name: string;
   value: number;
@@ -254,8 +265,12 @@ export class ApiClientService {
     return this.http.get<PaginatedResponse<Session>>(`${this.apiUrl}/sessions?page=${page}&limit=${limit}`);
   }
 
-      getSessionReplay(sessionId: number): Observable<SessionEvent[]> {
-    return this.http.get<SessionEvent[]>(`${this.apiUrl}/sessions/${sessionId}/replay`);
+      getSessionReplay(sessionId: number): Observable<SessionReplay> {
+    return this.http.get<SessionReplay>(`${this.apiUrl}/sessions/${sessionId}/replay`);
+  }
+
+  getSessionTerminalSize(sessionId: number): Observable<SessionTerminalSize> {
+    return this.http.get<SessionTerminalSize>(`${this.apiUrl}/sessions/${sessionId}/meta`);
   }
 
   getSessionDetails(sessionId: number): Observable<SessionDetails> {

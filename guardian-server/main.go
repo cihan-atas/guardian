@@ -172,6 +172,7 @@ func main() {
 					r.Delete("/", handlers.TerminateSession(db, ac))
 					r.Get("/replay", handlers.GetSessionReplay(db))
 					r.Get("/commands", handlers.GetSessionCommands(db))
+					r.Get("/meta", handlers.GetSessionMeta(db))
 				})
 			})
 		})

@@ -96,6 +96,8 @@ func StartSession(db *sql.DB) http.HandlerFunc {
 			RuleID   int    `json:"rule_id"`
 			ServerID int    `json:"server_id"`
 			Username string `json:"username"`
+			Cols     int    `json:"cols"`
+			Rows     int    `json:"rows"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Geçersiz istek gövdesi", http.StatusBadRequest)
@@ -107,13 +109,13 @@ func StartSession(db *sql.DB) http.HandlerFunc {
 		}
 		sqlStatement := `
 			WITH new_session AS (
-				INSERT INTO sessions (rule_id, server_id, username, status)
-				VALUES ($1, $2, $3, 'active')
+				INSERT INTO sessions (rule_id, server_id, username, status, cols, rows)
+				VALUES ($1, $2, $3, 'active', NULLIF($4, 0), NULLIF($5, 0))
 				RETURNING id, rule_id
 			)
 			SELECT ns.id, ar.valid_until FROM new_session ns
 			LEFT JOIN access_rules ar ON ns.rule_id = ar.id`
-		err := db.QueryRow(sqlStatement, req.RuleID, req.ServerID, req.Username).Scan(
+		err := db.QueryRow(sqlStatement, req.RuleID, req.ServerID, req.Username, req.Cols, req.Rows).Scan(
 			&response.ID, &response.ValidUntil,
 		)
 		if err != nil {
@@ -160,6 +162,56 @@ func EndSession(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// sessionTerminalSize, bir oturumun kaydedildiği PTY boyutunu (cols/rows) döner.
+// Kayıt sırasında kullanılan gerçek terminal boyutu ile tekrar oynatma/canlı izleme
+// tarafında oluşturulan terminalin boyutu eşleşmezse, mutlak imleç konumlandırma
+// ve scroll-region ANSI kodları yanlış yorumlanır (ekran birden fazla ekranı
+// dolduğunda imlecin en üste sıçraması ve ekranın bozulması bu yüzdendir).
+func sessionTerminalSize(db *sql.DB, sessionID int) (cols, rows int, err error) {
+	var nCols, nRows sql.NullInt64
+	err = db.QueryRow(`SELECT cols, rows FROM sessions WHERE id = $1`, sessionID).Scan(&nCols, &nRows)
+	if err != nil {
+		return 0, 0, err
+	}
+	if nCols.Valid {
+		cols = int(nCols.Int64)
+	}
+	if nRows.Valid {
+		rows = int(nRows.Int64)
+	}
+	return cols, rows, nil
+}
+
+// GetSessionMeta, bir oturumun kaydedildiği terminal boyutunu (cols/rows) döner.
+// Canlı izleme arayüzü, WebSocket bağlantısını açmadan önce terminalini bu
+// boyuta göre oluşturmak için bu endpoint'i kullanır.
+func GetSessionMeta(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "sessionID"))
+		if err != nil {
+			http.Error(w, "Geçersiz oturum ID'si", http.StatusBadRequest)
+			return
+		}
+
+		cols, rows, err := sessionTerminalSize(db, sessionID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Oturum bulunamadı", http.StatusNotFound)
+				return
+			}
+			log.Printf("Oturum meta verisi alınamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(struct {
+			Cols int `json:"cols"`
+			Rows int `json:"rows"`
+		}{Cols: cols, Rows: rows})
+	}
+}
+
 func GetSessionReplay(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID, err := strconv.Atoi(chi.URLParam(r, "sessionID"))
@@ -169,37 +221,48 @@ func GetSessionReplay(db *sql.DB) http.HandlerFunc {
 		}
 
 		log.Printf("Oturum tekrar oynatma isteği alındı: Session ID %d", sessionID)
+
+		cols, rows, err := sessionTerminalSize(db, sessionID)
+		if err != nil && err != sql.ErrNoRows {
+			log.Printf("Oturum meta verisi alınamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+
 		query := `
 			SELECT id, session_id, event_type, data, event_time
 			FROM session_events
 			WHERE session_id = $1
 			ORDER BY event_time ASC, id ASC`
-		rows, err := db.Query(query, sessionID)
+		rows2, err := db.Query(query, sessionID)
 		if err != nil {
 			log.Printf("Veritabanı replay sorgu hatası: %v", err)
 			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
 			return
 		}
-		defer rows.Close()
+		defer rows2.Close()
 
 		var events []models.SessionEvent
-		for rows.Next() {
+		for rows2.Next() {
 			var event models.SessionEvent
-			if err := rows.Scan(&event.ID, &event.SessionID, &event.EventType, &event.Data, &event.EventTime); err != nil {
+			if err := rows2.Scan(&event.ID, &event.SessionID, &event.EventType, &event.Data, &event.EventTime); err != nil {
 				log.Printf("Oturum olayı verisi okunurken hata: %v", err)
 				http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
 				return
 			}
 			events = append(events, event)
 		}
-		if err = rows.Err(); err != nil {
+		if err = rows2.Err(); err != nil {
 			log.Printf("Satır okuma hatası: %v", err)
 			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		json.NewEncoder(w).Encode(events)
+		json.NewEncoder(w).Encode(struct {
+			Cols   int                   `json:"cols"`
+			Rows   int                   `json:"rows"`
+			Events []models.SessionEvent `json:"events"`
+		}{Cols: cols, Rows: rows, Events: events})
 	}
 }
 

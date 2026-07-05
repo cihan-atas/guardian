@@ -6,7 +6,7 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { AuthService } from '../../core/services/auth.service';
 import { ApiClientService } from '../../core/services/api-client.service';
-import { Subscription } from 'rxjs';
+import { Subscription, lastValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment'; 
 
 @Component({
@@ -24,6 +24,7 @@ export class LiveSessionComponent implements OnInit, OnDestroy, AfterViewInit {
   private term: Terminal;
   private fitAddon: FitAddon;
   private routeSub: Subscription | undefined;
+  private sizeKnown = false;
 
   ws: WebSocket | null = null;
  
@@ -58,7 +59,11 @@ export class LiveSessionComponent implements OnInit, OnDestroy, AfterViewInit {
   
   ngAfterViewInit(): void {
     this.fitAddon.fit();
-    window.addEventListener('resize', () => this.fitAddon.fit());
+    window.addEventListener('resize', () => {
+      if (!this.sizeKnown) {
+        this.fitAddon.fit();
+      }
+    });
   }
 
   ngOnDestroy(): void {
@@ -75,7 +80,7 @@ export class LiveSessionComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
-  connect(): void {
+  async connect(): Promise<void> {
     if (!this.sessionId) return;
     if (this.ws) { this.ws.close(); }
 
@@ -87,6 +92,23 @@ export class LiveSessionComponent implements OnInit, OnDestroy, AfterViewInit {
       this.toastr.error('Kimlik doğrulama token\'ı bulunamadı!', 'Hata');
       this.updateStatus('Yetkilendirme hatası!', 'red');
       return;
+    }
+
+    // Terminali, kaydın yapıldığı PTY ile aynı boyuta getir. Aksi halde
+    // (boyutlar farklıysa) ANSI imleç konumlandırma/scroll-region kodları
+    // yanlış yorumlanır ve ekran birden fazla ekranı doldurunca imleç en
+    // üste sıçrar, ekran bozuk kayar. Konteyner daha küçükse kaydırma
+    // çubukları ile gösterilir.
+    try {
+      const size = await lastValueFrom(this.apiClient.getSessionTerminalSize(Number(this.sessionId)));
+      if (size?.cols > 0 && size?.rows > 0) {
+        this.term.resize(size.cols, size.rows);
+        this.sizeKnown = true;
+      } else {
+        this.fitAddon.fit();
+      }
+    } catch {
+      this.fitAddon.fit();
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';

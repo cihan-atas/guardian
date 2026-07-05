@@ -1,0 +1,7 @@
+// Kayıt sırasında kullanılan PTY boyutuyla (cols/rows) sabitlenen terminal
+// konteynerden büyük olabilir. Konteyneri sıkıştırıp terminali yeniden
+// boyutlandırmak yerine (bu, ANSI imleç/scroll-region kodlarının yanlış
+// yorumlanmasına yol açar) kaydırma çubukları ile göstermeyi tercih ediyoruz.
+main {
+  overflow: auto;
+}

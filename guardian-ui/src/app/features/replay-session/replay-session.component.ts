@@ -31,6 +31,13 @@ export class ReplaySessionComponent implements OnInit, OnDestroy, AfterViewInit 
   private term: Terminal;
   private fitAddon: FitAddon;
   private routeSub: Subscription | undefined;
+  // Oturumun kaydedildiği PTY boyutu (backend'den gelir). Tekrar oynatma
+  // terminali, ANSI imleç konumlandırma/scroll-region kodlarının doğru
+  // yorumlanabilmesi için bu boyutla oluşturulmalı; konteynere göre dinamik
+  // "fit" edilirse (kayıt boyutundan farklıysa) ekran birden fazla ekranı
+  // doldurunca imleç sıçraması ve bozuk kaydırma oluşur.
+  private recordedCols = 0;
+  private recordedRows = 0;
 
    faPlay = faPlay;
   faPause = faPause;
@@ -81,7 +88,13 @@ export class ReplaySessionComponent implements OnInit, OnDestroy, AfterViewInit 
 
   ngAfterViewInit(): void {
     this.fitAddon.fit();
-    window.addEventListener('resize', () => this.fitAddon.fit());
+    window.addEventListener('resize', () => {
+      // Kayıtlı bir PTY boyutu biliniyorsa terminal boyutunu sabit tutuyoruz;
+      // aksi halde (eski kayıtlarda meta veri yoksa) konteynere göre fit ediyoruz.
+      if (!this.recordedCols || !this.recordedRows) {
+        this.fitAddon.fit();
+      }
+    });
   }
 
   ngOnDestroy(): void {
@@ -96,13 +109,25 @@ export class ReplaySessionComponent implements OnInit, OnDestroy, AfterViewInit 
     this.term.write(`Oturum ID ${this.sessionId} yükleniyor...`);
 
     try {
-      const rawEvents = await lastValueFrom(this.apiClient.getSessionReplay(Number(this.sessionId)));
+      const replay = await lastValueFrom(this.apiClient.getSessionReplay(Number(this.sessionId)));
+      const rawEvents = replay?.events;
       if (!rawEvents || rawEvents.length === 0) {
         this.term.write('\r\nBu oturum için kayıtlı terminal çıktısı bulunamadı.');
         this.toastr.info('Bu oturum için kayıtlı terminal çıktısı bulunamadı.');
         return;
       }
-      
+
+      this.recordedCols = replay.cols;
+      this.recordedRows = replay.rows;
+      if (this.recordedCols > 0 && this.recordedRows > 0) {
+        // Terminali, kaydın yapıldığı PTY ile birebir aynı boyuta getir.
+        // Konteyner daha küçükse tarayıcı kaydırma çubuklarıyla gösterilir;
+        // bu, boyut uyuşmazlığından kaynaklanan imleç/kaydırma bozulmalarını önler.
+        this.term.resize(this.recordedCols, this.recordedRows);
+      } else {
+        this.fitAddon.fit();
+      }
+
       this.player.events = rawEvents
         .filter(e => e.event_type === 'output')
         .map(e => ({ ...e, timestamp: new Date(e.event_time).getTime() }));
