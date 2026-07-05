@@ -1,0 +1,10 @@
+# Sırlar ve sertifikalar
+.env
+certs/
+
+# Derleme çıktıları
+guardian-agent/agent
+guardian-agent/guardian-agent
+guardian-server/guardian-server
+guardian-cli/guardian-cli
+guardian-cli/cli

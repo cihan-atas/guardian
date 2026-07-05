@@ -64,9 +64,11 @@ Bu betik size adım adım rehberlik edecektir. Detaylı bilgi için **[Sertifika
 
 ### 3. Sunucu Kurulumu
 
-Projenin merkezi bileşenlerini (Server, Veritabanı, UI) bir sunucuya kurun.
+Projenin merkezi bileşenlerini (Server, Veritabanı, UI) bir sunucuya kurun. İki yöntemden birini seçebilirsiniz:
 
-➡️ **Detaylı talimatlar için: [Guardian Sunucu Kurulum Rehberi](./docs/server-setup.md)**
+➡️ **Manuel (systemd) kurulum için: [Guardian Sunucu Kurulum Rehberi](./docs/server-setup.md)**
+
+➡️ **Docker Compose ile kurulum için: [Guardian Docker Kurulum Rehberi](./docs/docker-setup.md)**
 
 ### 4. Agent Kurulumu
 
