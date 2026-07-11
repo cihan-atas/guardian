@@ -147,6 +147,20 @@ func StartSession(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
 			return
 		}
+		// Yeni oturum bildirimi (opsiyonel dış kanallara).
+		var hostname string
+		db.QueryRow(`SELECT hostname FROM servers WHERE id = $1`, req.ServerID).Scan(&hostname)
+		if hostname == "" {
+			hostname = fmt.Sprintf("server#%d", req.ServerID)
+		}
+		services.Notify(services.NotifyEvent{
+			Kind:    "session_start",
+			Title:   fmt.Sprintf("Yeni oturum #%d", response.ID),
+			Text:    fmt.Sprintf("%s kullanıcısı %s sunucusunda oturum açtı.", req.Username, hostname),
+			Level:   "info",
+			Session: response.ID,
+		})
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(response)

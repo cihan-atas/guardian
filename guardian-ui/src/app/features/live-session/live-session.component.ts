@@ -8,7 +8,16 @@ import { Subscription, lastValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { TerminalViewerComponent } from '../../shared/terminal-viewer/terminal-viewer.component';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
-import { faPowerOff, faShieldHalved, faBan, faPause } from '@fortawesome/free-solid-svg-icons';
+import { faPowerOff, faShieldHalved, faBan, faPause, faTriangleExclamation, faXmark } from '@fortawesome/free-solid-svg-icons';
+
+/** Canlı oturumda sunucudan gelen riskli komut uyarısı. */
+interface LiveAlert {
+  severity: string;
+  rule: string;
+  command: string;
+  action: string;
+  timestamp: string;
+}
 
 @Component({
   selector: 'app-live-session',
@@ -24,6 +33,11 @@ export class LiveSessionComponent implements OnInit, OnDestroy {
   faShield = faShieldHalved;
   faBan = faBan;
   faPause = faPause;
+  faWarn = faTriangleExclamation;
+  faClose = faXmark;
+
+  /** Bu oturumda tespit edilen riskli komutlar (en yeni en üstte). */
+  public alerts: LiveAlert[] = [];
 
   private routeSub: Subscription | undefined;
   private durationTimer: ReturnType<typeof setInterval> | undefined;
@@ -150,6 +164,8 @@ export class LiveSessionComponent implements OnInit, OnDestroy {
         } catch (e) {
           console.error('Base64 decode hatası:', e, messageObject.data);
         }
+      } else if (messageObject && messageObject.type === 'alert') {
+        this.handleAlert(messageObject as LiveAlert);
       }
     };
 
@@ -163,6 +179,30 @@ export class LiveSessionComponent implements OnInit, OnDestroy {
       console.error('WebSocket hatası:', error);
       this.status = { message: 'Bağlantı hatası!', color: 'red', isLive: false };
     };
+  }
+
+  private handleAlert(alert: LiveAlert): void {
+    this.alerts.unshift(alert);
+    if (this.alerts.length > 20) this.alerts.pop();
+
+    const label = alert.severity === 'critical' ? 'KRİTİK' : 'RİSKLİ';
+    let msg = `${alert.rule}: ${alert.command}`;
+    if (alert.action && alert.action !== 'none') {
+      msg += ` — otomatik aksiyon: ${alert.action}`;
+    }
+    if (alert.severity === 'critical') {
+      this.toastr.error(msg, `⚠ ${label} KOMUT`, { timeOut: 12000, closeButton: true });
+    } else {
+      this.toastr.warning(msg, `⚠ ${label} KOMUT`, { timeOut: 9000, closeButton: true });
+    }
+  }
+
+  dismissAlert(index: number): void {
+    this.alerts.splice(index, 1);
+  }
+
+  clearAlerts(): void {
+    this.alerts = [];
   }
 
   private startDurationTimer(): void {

@@ -55,11 +55,18 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 
 ---
 
-## 🗺️ Yol Haritası / Planlanan Özellikler
+### 9. Gerçek zamanlı riskli komut alarmı + bildirimler (2026-07-11)
+- **Sunucu tarafı canlı tespit:** agent WS'inden gelen `input` olayları komut sınırına (Enter) kadar biriktirilip `services.DetectRisky` ile denetleniyor (`risky_command_service.go`). Kurallar `high`/`critical` ciddiyetli (sudo, chmod 777, curl|sh, /etc/shadow… → high; rm -rf /, mkfs, dd of=/dev/, fork bomb, shutdown… → critical). Birim testli.
+- **Alert akışı** (`alert_service.go`): eşleşme → `alerts` tablosuna kayıt (başlangıçta `CREATE TABLE IF NOT EXISTS` ile otomatik migration) + o oturumu canlı izleyen tarayıcılara WS `{type:"alert"}` yayını + dış bildirim + kritikte opsiyonel oto-aksiyon.
+- **Oto-aksiyon:** `GUARDIAN_RISKY_AUTOACTION` = `none` (varsayılan) | `terminate` | `ban`; yalnızca `critical` eşleşmelerde uygulanır.
+- **Bildirimler** (`notification_service.go`): webhook (Slack/Discord/Teams uyumlu JSON) ve/veya SMTP e-posta, fire-and-forget. Tetikleyiciler: riskli komut, yeni oturum (`StartSession`), anahtar yasağı (`BanPublicKey`). Hepsi opsiyonel env ile açılır; hiçbiri yoksa yalnızca uygulama içi uyarı.
+- **UI:** canlı oturum ekranında yüzen uyarı paneli + toast; dashboard'da "Son Riskli Komut Uyarıları" paneli (`/api/dashboard/alerts`).
+- **Yeni env değişkenleri** (server.conf): `GUARDIAN_WEBHOOK_URL`, `GUARDIAN_SMTP_HOST/PORT/USER/PASS/FROM`, `GUARDIAN_ALERT_EMAIL_TO`, `GUARDIAN_RISKY_AUTOACTION`.
+- **UI'dan yönetim (Ayarlar sayfası):** Bu ayarlar artık `settings` (key-value) tablosunda tutulur ve `/settings` ekranından düzenlenir; env değerleri yalnızca ilk açılışta (tablo boşsa) tohumlanır. Kayıttan sonra notifier + alerting canlı yeniden yüklenir (restart yok). Endpoint'ler: `GET/PUT /api/settings`, `POST /api/settings/test`. SMTP parolası write-only (GET'te dönmez, boş bırakılırsa korunur). "Test Bildirimi Gönder" butonuyla kanal denenebilir.
 
-### Devam eden (şu an çalışılıyor)
-1. **Gerçek zamanlı riskli komut alarmı** — sunucu tarafı canlı oturumda riskli kalıp tespiti (`rm -rf`, `curl | sh`, `passwd`…), dashboard'a canlı uyarı, opsiyonel otomatik aksiyon (oturumu kes / anahtarı yasakla).
-2. **Bildirimler (Slack / e-posta / webhook)** — yeni oturum, bağlantı kopması, riskli komut, ban olaylarında dışa bildirim.
+---
+
+## 🗺️ Yol Haritası / Planlanan Özellikler
 
 ### Sırada
 3. **Onay akışı (approval workflow)** — kullanıcı erişim talep eder, admin tek tıkla onaylar/reddeder; self-service JIT.

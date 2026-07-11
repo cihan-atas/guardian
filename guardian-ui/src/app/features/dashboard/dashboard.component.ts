@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { ToastrService } from 'ngx-toastr';
-import { ApiClientService, DashboardStats, ChartData, SeriesChartData, ActiveSessionInfo, AuditLog, Rule, Session, CommandStat } from '../../core/services/api-client.service';
+import { ApiClientService, DashboardStats, ChartData, SeriesChartData, ActiveSessionInfo, AuditLog, Rule, Session, CommandStat, Alert } from '../../core/services/api-client.service';
 import { NgxChartsModule, Color, ScaleType, LegendPosition } from '@swimlane/ngx-charts';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { IconDefinition } from '@fortawesome/fontawesome-svg-core';
@@ -91,6 +91,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   auditLogs: AuditLog[] = [];
   accessWindows: Rule[] = [];
   recentSessions: Session[] = [];
+  alerts: Alert[] = [];
 
   // --- Komut analitiği (tam komut + sunucu filtresi + drill-down) ---
   private commandStats: CommandStat[] = [];
@@ -234,7 +235,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
       activeSessions: this.apiClient.getActiveSessionsList(),
       auditLogs: this.apiClient.getAuditLogStream(),
       rules: this.apiClient.getRules(1, 100),
-      sessions: this.apiClient.getSessions(1, 7)
+      sessions: this.apiClient.getSessions(1, 7),
+      alerts: this.apiClient.getAlerts(8)
     }).subscribe({
       next: (data) => {
         this.stats = data.stats;
@@ -253,6 +255,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
           .sort((a, b) => new Date(a.valid_until).getTime() - new Date(b.valid_until).getTime())
           .slice(0, 6);
         this.recentSessions = data.sessions?.data ?? [];
+        this.alerts = data.alerts ?? [];
         this.isLoading = false;
         setTimeout(() => this.recalculateChartSizes(), 0);
       },

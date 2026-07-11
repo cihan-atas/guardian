@@ -1,0 +1,117 @@
+<header class="flex flex-wrap items-end justify-between gap-4 mb-6">
+  <div>
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Yönetim</p>
+    <h1 class="text-2xl font-bold text-text-main tracking-tight">Ayarlar</h1>
+    <p class="mt-1 text-sm text-text-secondary">Bildirim kanalları ve riskli komut alarmı davranışı. Değişiklikler anında uygulanır (servis restartı gerekmez).</p>
+  </div>
+</header>
+
+<div *ngIf="isLoading" class="text-center text-text-secondary py-16">
+  <fa-icon [icon]="faSpinner" class="fa-spin text-3xl text-accent"></fa-icon>
+</div>
+
+<div *ngIf="!isLoading" class="max-w-3xl space-y-6">
+
+  <!-- Webhook -->
+  <section class="bg-dark-card rounded-xl border border-dark-border p-6">
+    <div class="flex items-center gap-2 mb-1">
+      <fa-icon [icon]="faBell" class="text-accent"></fa-icon>
+      <h2 class="text-base font-semibold text-text-main">Webhook Bildirimi</h2>
+      <span class="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full"
+            [ngClass]="webhookEnabled ? 'bg-success-500/10 text-success-400' : 'bg-dark-interactive text-text-secondary'">
+        {{ webhookEnabled ? 'Aktif' : 'Kapalı' }}
+      </span>
+    </div>
+    <p class="text-xs text-text-secondary mb-4">Slack / Discord / Teams veya kendi servisiniz. Slack uyumlu <code>{{ '{' }}"text": …{{ '}' }}</code> gövdesi gönderilir.</p>
+    <label class="block text-sm font-medium text-text-secondary mb-1">Webhook URL</label>
+    <input type="url" [(ngModel)]="model.webhook_url" placeholder="https://hooks.slack.com/services/..."
+           class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main font-mono focus:outline-none focus:border-accent">
+  </section>
+
+  <!-- SMTP -->
+  <section class="bg-dark-card rounded-xl border border-dark-border p-6">
+    <div class="flex items-center gap-2 mb-1">
+      <fa-icon [icon]="faEnvelope" class="text-accent"></fa-icon>
+      <h2 class="text-base font-semibold text-text-main">E-posta (SMTP) Bildirimi</h2>
+      <span class="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full"
+            [ngClass]="emailEnabled ? 'bg-success-500/10 text-success-400' : 'bg-dark-interactive text-text-secondary'">
+        {{ emailEnabled ? 'Aktif' : 'Kapalı' }}
+      </span>
+    </div>
+    <p class="text-xs text-text-secondary mb-4">Sunucu adresi ve alıcı birlikte doluysa e-posta bildirimi etkinleşir.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="md:col-span-2">
+        <label class="block text-sm font-medium text-text-secondary mb-1">SMTP Sunucusu</label>
+        <input type="text" [(ngModel)]="model.smtp_host" placeholder="smtp.gmail.com"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">Port</label>
+        <input type="text" [(ngModel)]="model.smtp_port" placeholder="587"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main font-mono focus:outline-none focus:border-accent">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">Kullanıcı</label>
+        <input type="text" [(ngModel)]="model.smtp_user" autocomplete="off"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">
+          Parola <span *ngIf="smtpPassSet" class="text-success-400 normal-case font-normal">(kayıtlı — değiştirmek için yazın)</span>
+        </label>
+        <input type="password" [(ngModel)]="model.smtp_pass" autocomplete="new-password"
+               [placeholder]="smtpPassSet ? '••••••••' : 'parola'"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">Gönderen (From)</label>
+        <input type="email" [(ngModel)]="model.smtp_from" placeholder="guardian@sirket.com"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      </div>
+      <div class="md:col-span-3">
+        <label class="block text-sm font-medium text-text-secondary mb-1">Alıcılar</label>
+        <input type="text" [(ngModel)]="model.alert_email_to" placeholder="soc@sirket.com, admin@sirket.com"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+        <p class="text-[11px] text-text-secondary mt-1">Birden fazla adres virgülle ayrılır.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Riskli komut oto-aksiyonu -->
+  <section class="bg-dark-card rounded-xl border border-dark-border p-6">
+    <div class="flex items-center gap-2 mb-1">
+      <fa-icon [icon]="faWarn" class="text-danger-400"></fa-icon>
+      <h2 class="text-base font-semibold text-text-main">Riskli Komut Oto-Aksiyonu</h2>
+    </div>
+    <p class="text-xs text-text-secondary mb-4">Yalnızca <span class="text-danger-300 font-semibold">kritik</span> komutlarda (örn. <code>rm -rf /</code>, fork bomb) uygulanır. Yüksek riskli komutlar her durumda yalnızca uyarı üretir.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <label *ngFor="let a of autoActions"
+             class="cursor-pointer rounded-lg border p-3 transition-colors"
+             [ngClass]="model.risky_autoaction === a.value ? 'border-accent bg-accent/5' : 'border-dark-border hover:border-dark-interactive'">
+        <div class="flex items-center gap-2">
+          <input type="radio" name="autoaction" [value]="a.value" [(ngModel)]="model.risky_autoaction" class="accent-accent">
+          <span class="text-sm font-semibold text-text-main">{{ a.label }}</span>
+        </div>
+        <p class="text-[11px] text-text-secondary mt-1.5 leading-snug">{{ a.hint }}</p>
+      </label>
+    </div>
+  </section>
+
+  <!-- Aksiyonlar -->
+  <div class="flex items-center gap-3">
+    <button (click)="save()" [disabled]="isSaving"
+            class="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50">
+      <fa-icon [icon]="isSaving ? faSpinner : faSave" [class.fa-spin]="isSaving"></fa-icon> Kaydet
+    </button>
+    <button (click)="sendTest()" [disabled]="isTesting || (!webhookEnabled && !emailEnabled)"
+            title="Kayıtlı ayarlarla test bildirimi gönderir"
+            class="flex items-center gap-2 bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+      <fa-icon [icon]="isTesting ? faSpinner : faTest" [class.fa-spin]="isTesting"></fa-icon> Test Bildirimi Gönder
+    </button>
+    <span *ngIf="!webhookEnabled && !emailEnabled" class="text-xs text-text-secondary">
+      Test için önce bir kanal doldurup kaydedin.
+    </span>
+  </div>
+
+</div>

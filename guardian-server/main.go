@@ -11,6 +11,7 @@ import (
 	"guardian.com/server/handlers"
 	"guardian.com/server/hub"
 	"guardian.com/server/scheduler"
+	"guardian.com/server/services"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -36,6 +37,19 @@ func main() {
 	agentPort := getEnv("GUARDIAN_AGENT_PORT", "6666")
 	secretToken := os.Getenv("GUARDIAN_SECRET_TOKEN")
 	caCertFile := getEnv("TLS_CA_FILE", "../certs/ca.crt")
+
+	// Bildirim/alarm ayarları artık DB'de tutulur ve UI'dan yönetilir; env
+	// değerleri yalnızca ilk açılışta (settings tablosu boşsa) tohum olur.
+	settingsEnvDefaults := map[string]string{
+		services.SettingWebhookURL:      os.Getenv("GUARDIAN_WEBHOOK_URL"),
+		services.SettingSMTPHost:        os.Getenv("GUARDIAN_SMTP_HOST"),
+		services.SettingSMTPPort:        getEnv("GUARDIAN_SMTP_PORT", "587"),
+		services.SettingSMTPUser:        os.Getenv("GUARDIAN_SMTP_USER"),
+		services.SettingSMTPPass:        os.Getenv("GUARDIAN_SMTP_PASS"),
+		services.SettingSMTPFrom:        os.Getenv("GUARDIAN_SMTP_FROM"),
+		services.SettingAlertEmailTo:    os.Getenv("GUARDIAN_ALERT_EMAIL_TO"),
+		services.SettingRiskyAutoAction: getEnv("GUARDIAN_RISKY_AUTOACTION", "none"),
+	}
 
 	if dbUser == "" || dbPassword == "" || dbName == "" {
 		log.Fatal("FATAL: Veritabanı için gerekli ortam değişkenleri eksik.")
@@ -64,6 +78,15 @@ func main() {
 
 	if err := seedExampleData(db); err != nil {
 		log.Fatalf("Örnek veriler oluşturulurken hata oluştu: %v", err)
+	}
+
+	// alerts tablosunu (yoksa) oluştur + ayarları (DB + env tohumu) yükleyip
+	// bildirim/alarm katmanını yapılandır.
+	if err := services.EnsureAlertsTable(db); err != nil {
+		log.Fatalf("alerts tablosu oluşturulamadı: %v", err)
+	}
+	if err := services.InitSettings(db, settingsEnvDefaults); err != nil {
+		log.Fatalf("ayarlar yüklenemedi: %v", err)
 	}
 
 	ac := agentclient.New(agentPort, secretToken, caCertFile)
@@ -97,7 +120,7 @@ func main() {
 			r.Use(handlers.AgentAuth)
 			r.Post("/agent/sessions", handlers.StartSession(db))
 			r.Patch("/agent/sessions/{sessionID}", handlers.EndSession(db))
-			r.Get("/agent/ws/sessions/{sessionID}", handlers.AgentSessionStreamHandler(db, wsHub))
+			r.Get("/agent/ws/sessions/{sessionID}", handlers.AgentSessionStreamHandler(db, wsHub, ac))
 		})
 
 		r.Group(func(r chi.Router) {
@@ -125,6 +148,7 @@ func main() {
 				r.Get("/hourly-activity", handlers.GetHourlyActivity(db))
 				r.Get("/active-sessions", handlers.GetActiveSessionsList(db))
 				r.Get("/audit-stream", handlers.GetAuditLogStream(db))
+				r.Get("/alerts", handlers.GetAlerts(db))
 			})
 			r.Route("/servers", func(r chi.Router) {
 				r.Get("/", handlers.ListServers(db))
@@ -171,6 +195,12 @@ func main() {
 					r.Patch("/", handlers.PatchSystemUser(db))
 					r.Delete("/", handlers.DeleteSystemUser(db))
 				})
+			})
+
+			r.Route("/settings", func(r chi.Router) {
+				r.Get("/", handlers.GetSettings(db))
+				r.Put("/", handlers.UpdateSettings(db))
+				r.Post("/test", handlers.TestNotification(db))
 			})
 
 			r.Route("/sessions", func(r chi.Router) {

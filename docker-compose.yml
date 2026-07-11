@@ -35,6 +35,15 @@ services:
       GUARDIAN_AGENT_PORT: 6666
       GUARDIAN_SECRET_TOKEN: ${GUARDIAN_SECRET_TOKEN}
       GUARDIAN_ADMIN_TOKEN: ${GUARDIAN_ADMIN_TOKEN}
+      # Bildirimler & riskli komut alarmı (opsiyonel; .env'de boşsa devre dışı).
+      GUARDIAN_WEBHOOK_URL: ${GUARDIAN_WEBHOOK_URL:-}
+      GUARDIAN_SMTP_HOST: ${GUARDIAN_SMTP_HOST:-}
+      GUARDIAN_SMTP_PORT: ${GUARDIAN_SMTP_PORT:-587}
+      GUARDIAN_SMTP_USER: ${GUARDIAN_SMTP_USER:-}
+      GUARDIAN_SMTP_PASS: ${GUARDIAN_SMTP_PASS:-}
+      GUARDIAN_SMTP_FROM: ${GUARDIAN_SMTP_FROM:-}
+      GUARDIAN_ALERT_EMAIL_TO: ${GUARDIAN_ALERT_EMAIL_TO:-}
+      GUARDIAN_RISKY_AUTOACTION: ${GUARDIAN_RISKY_AUTOACTION:-none}
       TLS_CA_FILE: /etc/guardian/certs/ca.crt
       TLS_CERT_FILE: /etc/guardian/certs/server.crt
       TLS_KEY_FILE: /etc/guardian/certs/server.key

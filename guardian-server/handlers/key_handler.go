@@ -365,6 +365,17 @@ func BanPublicKey(db *sql.DB, ac agentclient.AgentCommunicator) http.HandlerFunc
 			Status:     "SUCCESS",
 		})
 
+		banReason := payload.Reason
+		if banReason == "" {
+			banReason = "—"
+		}
+		services.Notify(services.NotifyEvent{
+			Kind:  "key_ban",
+			Title: "Anahtar yasaklandı",
+			Text:  fmt.Sprintf("Anahtar #%d, %d dakika süreyle yasaklandı. Gerekçe: %s", keyID, payload.DurationMinutes, banReason),
+			Level: "warning",
+		})
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(ban)

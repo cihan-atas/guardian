@@ -127,6 +127,40 @@
 
   </div>
 
+  <!-- Güvenlik uyarıları (riskli komut tespitleri) -->
+  <div *ngIf="alerts.length > 0" class="mt-6 bg-dark-card rounded-xl border border-danger-800/50 p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="chart-kicker text-danger-400">Güvenlik</p>
+        <h3 class="text-base font-semibold text-text-main flex items-center gap-2">
+          <fa-icon [icon]="faWarn" class="text-danger-400"></fa-icon> Son Riskli Komut Uyarıları
+        </h3>
+      </div>
+      <a routerLink="/sessions" class="text-sm font-semibold text-accent hover:text-accent-hover">Oturumlar →</a>
+    </div>
+    <ul class="space-y-2">
+      <li *ngFor="let a of alerts" class="flex items-start gap-3 px-3 py-2 rounded-lg bg-dark-main/50">
+        <span class="mt-1.5 w-2 h-2 rounded-full shrink-0" [ngClass]="a.severity === 'critical' ? 'bg-danger-500' : 'bg-warning-500'"></span>
+        <div class="min-w-0 flex-grow">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-[10px] font-bold uppercase tracking-wider" [ngClass]="a.severity === 'critical' ? 'text-danger-300' : 'text-warning-300'">
+              {{ a.severity === 'critical' ? 'KRİTİK' : 'RİSKLİ' }}
+            </span>
+            <span class="text-xs text-text-secondary">{{ a.rule_name }}</span>
+            <span *ngIf="a.action_taken && a.action_taken !== 'none'" class="text-[10px] font-semibold bg-danger-500/20 text-danger-300 px-1.5 py-0.5 rounded">
+              {{ a.action_taken }}
+            </span>
+          </div>
+          <code class="block font-mono text-xs text-text-main mt-0.5 truncate">{{ a.command }}</code>
+        </div>
+        <div class="text-right shrink-0">
+          <a *ngIf="a.session_id" [routerLink]="['/replay', a.session_id]" class="text-xs font-mono text-accent hover:text-accent-hover">#{{ a.session_id }}</a>
+          <p class="text-[10px] font-mono text-text-secondary mt-0.5">{{ a.created_at | date:'dd.MM HH:mm' }}</p>
+        </div>
+      </li>
+    </ul>
+  </div>
+
   <!-- Aktivite (hero grafik) -->
   <div #lineChartCard class="chart-card mt-6 ngx-charts-dark">
     <div class="chart-head">

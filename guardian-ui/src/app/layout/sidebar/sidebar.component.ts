@@ -3,7 +3,7 @@ import { Component } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
  import { FaIconComponent } from '@fortawesome/angular-fontawesome';
-import { faClockRotateLeft, faGavel, faServer, faUsers, faKey, faRightFromBracket,   faChartBar  } from '@fortawesome/free-solid-svg-icons';
+import { faClockRotateLeft, faGavel, faServer, faUsers, faKey, faRightFromBracket,   faChartBar, faGear  } from '@fortawesome/free-solid-svg-icons';
 
 @Component({
   selector: 'app-sidebar',
@@ -19,8 +19,9 @@ export class SidebarComponent {
   faUsers = faUsers;
   faKeys = faKey;
   faLogout = faRightFromBracket;
-  faDashboard = faChartBar; 
-  
+  faDashboard = faChartBar;
+  faSettings = faGear;
+
   constructor(private authService: AuthService) {}
 
   logout(): void {

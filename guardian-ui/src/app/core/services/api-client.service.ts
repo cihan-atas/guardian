@@ -212,6 +212,32 @@ export interface ActiveSessionInfo {
   server_hostname: string;
 }
 
+/** Bildirim/alarm ayarları (UI'dan yönetilir; smtp_pass write-only). */
+export interface NotificationSettings {
+  webhook_url: string;
+  smtp_host: string;
+  smtp_port: string;
+  smtp_user: string;
+  smtp_pass?: string;
+  smtp_pass_set?: boolean;
+  smtp_from: string;
+  alert_email_to: string;
+  risky_autoaction: 'none' | 'terminate' | 'ban' | string;
+}
+
+/** Güvenlik uyarısı (riskli komut tespiti). */
+export interface Alert {
+  id: number;
+  session_id: number;
+  severity: 'high' | 'critical' | string;
+  rule_name: string;
+  command: string;
+  action_taken: string;
+  created_at: string;
+  username?: string;
+  server_hostname?: string;
+}
+
 export interface AuditLog {
   id: number;
   admin_ref: string;
@@ -369,6 +395,22 @@ export class ApiClientService {
 
   getActiveSessionsList(): Observable<ActiveSessionInfo[]> {
     return this.http.get<ActiveSessionInfo[]>(`${this.apiUrl}/dashboard/active-sessions`);
+  }
+
+  getAlerts(limit: number = 20): Observable<Alert[]> {
+    return this.http.get<Alert[]>(`${this.apiUrl}/dashboard/alerts?limit=${limit}`);
+  }
+
+  getSettings(): Observable<NotificationSettings> {
+    return this.http.get<NotificationSettings>(`${this.apiUrl}/settings`);
+  }
+
+  updateSettings(payload: NotificationSettings): Observable<any> {
+    return this.http.put(`${this.apiUrl}/settings`, payload);
+  }
+
+  testNotification(): Observable<any> {
+    return this.http.post(`${this.apiUrl}/settings/test`, {});
   }
 
   getAuditLogStream(): Observable<AuditLog[]> {

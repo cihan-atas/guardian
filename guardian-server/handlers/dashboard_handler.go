@@ -187,6 +187,24 @@ func GetTopCommands(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// GetAlerts, en son güvenlik uyarılarını (riskli komut tespitleri) döner.
+func GetAlerts(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+		if err != nil || limit < 1 {
+			limit = 20
+		}
+		results, err := services.RecentAlerts(db, limit)
+		if err != nil {
+			log.Printf("Uyarılar alınırken hata: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(results)
+	}
+}
+
 // GetCommandStats, TAM komut bazında (örn. "ls -la") kullanım istatistiğini
 // sunucu kırılımıyla döner. ?sessions= ile taranacak son oturum sayısı ayarlanır.
 func GetCommandStats(db *sql.DB) http.HandlerFunc {

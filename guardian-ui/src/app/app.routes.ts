@@ -8,7 +8,8 @@ import { LoginComponent } from './features/login/login.component';
 import { authGuard } from './core/guards/auth.guard';
 import { LiveSessionComponent } from './features/live-session/live-session.component';
 import { ReplaySessionComponent } from './features/replay-session/replay-session.component';
-import { DashboardComponent } from './features/dashboard/dashboard.component'; 
+import { DashboardComponent } from './features/dashboard/dashboard.component';
+import { SettingsComponent } from './features/settings/settings.component';
 
 export const routes: Routes = [
     { path: 'login', component: LoginComponent },
@@ -28,6 +29,7 @@ export const routes: Routes = [
         { path: 'keys', component: KeysComponent },
         { path: 'rules', component: RulesComponent },
         { path: 'sessions', component: SessionsComponent },
+        { path: 'settings', component: SettingsComponent },
       ]
     },
 
