@@ -1,0 +1,70 @@
+<header class="mb-6">
+  <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Denetim</p>
+  <h1 class="text-2xl font-bold text-text-main tracking-tight">Komut Arama</h1>
+  <p class="mt-1 text-sm text-text-secondary">Tüm oturumlarda çalıştırılmış komutlarda ara — "kim <code class="text-text-main">chmod 777</code> çalıştırdı?". Sonuçtan ilgili komuta doğrudan replay açılır.</p>
+</header>
+
+<div class="relative flex items-center mb-5 max-w-xl">
+  <fa-icon [icon]="faSearch" class="absolute left-3.5 text-text-secondary pointer-events-none"></fa-icon>
+  <input type="text" [(ngModel)]="term" (input)="onInput()"
+         placeholder="komut ara (örn. rm -rf, sudo, chmod 777)…"
+         class="w-full bg-dark-card border border-dark-border rounded-lg pl-10 pr-3 py-2.5 text-sm text-text-main focus:outline-none focus:border-accent">
+  <fa-icon *ngIf="isLoading" [icon]="faSpinner" class="fa-spin absolute right-3.5 text-accent"></fa-icon>
+</div>
+
+<!-- İlk durum -->
+<div *ngIf="!searched && !isLoading" class="text-center py-16 text-text-secondary">
+  <fa-icon [icon]="faTerminal" class="text-4xl opacity-40 mb-3"></fa-icon>
+  <p>Aramak için en az 2 karakter yazın.</p>
+</div>
+
+<!-- Sonuç yok -->
+<div *ngIf="searched && !isLoading && results.length === 0"
+     class="text-center py-16 bg-dark-card rounded-xl border border-dark-border text-text-secondary">
+  <fa-icon [icon]="faTerminal" class="text-4xl opacity-40 mb-3"></fa-icon>
+  <p>Bu terimle eşleşen komut bulunamadı.</p>
+</div>
+
+<!-- Sonuçlar -->
+<div *ngIf="results.length > 0" class="bg-dark-card rounded-xl border border-dark-border overflow-hidden">
+  <div class="px-4 py-2.5 text-[11px] uppercase tracking-wider text-text-secondary border-b border-dark-border">
+    {{ results.length }} eşleşme (en fazla 200)
+  </div>
+  <div class="overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr class="bg-dark-main/60 text-text-secondary text-[11px] uppercase tracking-wider">
+          <th class="text-left font-semibold px-4 py-3">Komut</th>
+          <th class="text-left font-semibold px-4 py-3">Kullanıcı</th>
+          <th class="text-left font-semibold px-4 py-3">Sunucu</th>
+          <th class="text-left font-semibold px-4 py-3">Oturum</th>
+          <th class="text-left font-semibold px-4 py-3">Durum</th>
+          <th class="text-right font-semibold px-4 py-3">İşlem</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-dark-border">
+        <tr *ngFor="let m of results" class="hover:bg-dark-interactive/40 transition-colors">
+          <td class="px-4 py-3 max-w-[380px]">
+            <div class="flex items-center gap-2">
+              <fa-icon *ngIf="isRisky(m.command)" [icon]="faRisky" class="text-danger-400 shrink-0" title="Riskli komut"></fa-icon>
+              <code class="font-mono text-xs text-text-main truncate" [class.text-danger-300]="isRisky(m.command)" [title]="m.command">{{ m.command }}</code>
+            </div>
+          </td>
+          <td class="px-4 py-3 text-text-secondary whitespace-nowrap">{{ m.username }}</td>
+          <td class="px-4 py-3 text-text-secondary whitespace-nowrap">{{ m.server_hostname }}</td>
+          <td class="px-4 py-3 text-text-secondary whitespace-nowrap">
+            <span class="font-mono">#{{ m.session_id }}</span>
+            <span class="text-[11px] block">{{ m.start_time | date:'dd.MM.yy HH:mm' }}</span>
+          </td>
+          <td class="px-4 py-3"><app-status-badge [status]="m.status"></app-status-badge></td>
+          <td class="px-4 py-3 text-right whitespace-nowrap">
+            <a [routerLink]="['/replay', m.session_id]" [queryParams]="{ cmd: m.command_index }"
+               class="inline-flex items-center gap-1.5 text-accent hover:text-accent-hover font-semibold text-sm">
+              <fa-icon [icon]="faPlay"></fa-icon> Replay
+            </a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

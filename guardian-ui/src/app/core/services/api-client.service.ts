@@ -238,6 +238,17 @@ export interface Alert {
   server_hostname?: string;
 }
 
+/** Global komut arama eşleşmesi. */
+export interface CommandMatch {
+  session_id: number;
+  command_index: number;
+  command: string;
+  username: string;
+  server_hostname: string;
+  start_time: string;
+  status: string;
+}
+
 /** Sunucu agent sağlık durumu. */
 export interface ServerHealth {
   server_id: number;
@@ -551,6 +562,11 @@ export class ApiClientService {
   // Sunucu agent sağlık durumu (paralel ping).
   getServersHealth(): Observable<ServerHealth[]> {
     return this.http.get<ServerHealth[]>(`${this.apiUrl}/servers/health`);
+  }
+
+  // Global komut arama (tüm oturumlarda).
+  searchCommands(q: string, limit = 100): Observable<CommandMatch[]> {
+    return this.http.get<CommandMatch[]>(`${this.apiUrl}/commands/search?q=${encodeURIComponent(q)}&limit=${limit}`);
   }
 
  }

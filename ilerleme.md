@@ -89,12 +89,16 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 - `GET /api/audit-logs` filtreli + sayfalı denetim kaydı (arama: admin_ref/target_type ILIKE; `action`, `status` filtreleri); yalnızca admin.
 - UI: **Denetim Kaydı** ekranı (arama kutusu, aksiyon + sonuç filtreleri, sayfalama, Türkçe aksiyon etiketleri, hata mesajı gösterimi). Sidebar'a admin'e özel "Denetim Kaydı" kalemi. RBAC ile audit artık gerçek kullanıcı adını kaydettiği için ekran anlamlı.
 
+### 14. Global komut arama (2026-07-11)
+- `GET /api/commands/search?q=&limit=` en son 1000 oturumu tarayıp komut metninde alt dize araması yapar (`services.SearchCommands`). Her eşleşme oturum metadata'sı (kullanıcı, sunucu, zaman, durum) + oturum içi **komut indeksi** döner.
+- Komut indeksi `ParseSessionEvents`'in komut dizisiyle birebir hizalı (aynı ayrıştırma/temizleme mantığı) → sonuçtan **replay'e derin link**: `/replay/:id?cmd=<index>` replay'i doğrudan o komutta açar.
+- UI: **Komut Arama** ekranı (debounce'lu arama, riskli komut vurgusu, durum rozeti, "Replay" derin linki). Sidebar'a "Komut Arama" kalemi (tüm roller). Replay `?cmd=` query param'ını okuyup başlangıç karesini ilgili komuta ayarlar.
+
 ---
 
 ## 🗺️ Yol Haritası / Planlanan Özellikler
 
 ### Sırada
-7. **Global komut arama** — tüm oturumlarda komut arama ("kim `chmod 777` çalıştırdı?") + sonuçtan replay'e ilgili komuta derin link.
 8. **Windows agent desteği** — Windows OpenSSH `authorized_keys` + ConPTY uyarlaması (projenin başındaki çapraz platform hedefi).
 9. **Kayıt saklama politikası** — `session_events` için otomatik temizlik/arşiv zamanlayıcısı (örn. 90 gün).
 10. **Replay'i asciicast dışa aktarma** — kayıtları asciinema formatında indirme (paylaşım/delil).

@@ -66,6 +66,9 @@ export class ReplaySessionComponent implements OnInit, OnDestroy {
   public isLoaded = false;
   public riskyCount = 0;
 
+  /** Komut Arama'dan gelen derin link: ?cmd=<index> ile açılacak komut. */
+  private deepLinkCmd: number | null = null;
+
   constructor(
     private route: ActivatedRoute,
     private apiClient: ApiClientService,
@@ -74,6 +77,11 @@ export class ReplaySessionComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    // Komut Arama derin linki: ?cmd=<index>.
+    const cmdParam = this.route.snapshot.queryParamMap.get('cmd');
+    const parsed = cmdParam !== null ? Number(cmdParam) : NaN;
+    this.deepLinkCmd = Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+
     this.routeSub = this.route.params.subscribe(params => {
       this.sessionId = params['id'];
       if (this.sessionId) {
@@ -143,6 +151,12 @@ export class ReplaySessionComponent implements OnInit, OnDestroy {
         this.info = data.session_info;
         this.commands = data.commands ?? [];
         this.riskyCount = this.commands.filter(c => this.isRisky(c)).length;
+        // Derin link geldiyse başlangıç karesini o komuta ayarla (maybeInitialRender
+        // activeIndex'i yalnızca -1'ken 0'a çeker; burada ayarlayınca korunur).
+        if (this.deepLinkCmd !== null && this.commands.length > 0) {
+          this.activeIndex = Math.min(this.deepLinkCmd, this.commands.length - 1);
+          this.deepLinkCmd = null;
+        }
         this.maybeInitialRender();
       },
       error: () => { this.commands = []; }
