@@ -1,7 +1,10 @@
-// Kayıt sırasında kullanılan PTY boyutuyla (cols/rows) sabitlenen terminal
-// konteynerden büyük olabilir. Konteyneri sıkıştırıp terminali yeniden
-// boyutlandırmak yerine (bu, ANSI imleç/scroll-region kodlarının yanlış
-// yorumlanmasına yol açar) kaydırma çubukları ile göstermeyi tercih ediyoruz.
-main {
-  overflow: auto;
+// Kaydırma ve terminal boyutlandırma mantığı paylaşılan
+// TerminalViewerComponent içinde (bkz. shared/terminal-viewer).
+
+.info-chip {
+  @apply flex items-center gap-2 bg-dark-card border border-dark-border rounded-full px-3 py-1.5 text-xs text-text-main hover:border-accent transition-colors;
+}
+
+.info-chip-label {
+  @apply uppercase tracking-wider text-text-secondary text-[10px] font-semibold;
 }

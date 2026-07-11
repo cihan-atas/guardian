@@ -7,8 +7,12 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"guardian.com/server/agentclient"
 	"guardian.com/server/models"
 	"guardian.com/server/services"
 )
@@ -184,8 +188,30 @@ func ListPublicKeys(db *sql.DB) http.HandlerFunc {
 		}
 		offset := (page - 1) * limit
 
-		query := "SELECT id, key_name, ssh_public_key, fingerprint_sha256, created_at FROM public_keys ORDER BY id ASC LIMIT $1 OFFSET $2"
-		rows, err := db.Query(query, limit, offset)
+		// Opsiyonel arama: anahtar adı veya parmak izi üzerinde ILIKE.
+		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		where := ""
+		args := []interface{}{}
+		if search != "" {
+			where = " WHERE (pk.key_name ILIKE $1 OR pk.fingerprint_sha256 ILIKE $1)"
+			args = append(args, "%"+search+"%")
+		}
+		// Aktif yasak bilgisi LATERAL ile listeye gömülür (en geç biten yasak;
+		// aynı anahtara birden çok aktif ban olsa bile tek satır) — UI'nin
+		// anahtar başına ayrı ban-status isteği atmasına (N+1) gerek kalmaz.
+		query := fmt.Sprintf(`
+			SELECT pk.id, pk.key_name, pk.ssh_public_key, pk.fingerprint_sha256, pk.created_at,
+			       kb.banned_until, kb.reason
+			FROM public_keys pk
+			LEFT JOIN LATERAL (
+				SELECT banned_until, reason FROM key_bans
+				WHERE public_key_id = pk.id AND banned_until > NOW() AT TIME ZONE 'utc'
+				ORDER BY banned_until DESC LIMIT 1
+			) kb ON true
+			%s ORDER BY pk.id ASC LIMIT $%d OFFSET $%d`, where, len(args)+1, len(args)+2)
+		countArgs := append([]interface{}{}, args...)
+		args = append(args, limit, offset)
+		rows, err := db.Query(query, args...)
 		if err != nil {
 			log.Printf("Veritabanı public_keys sorgu hatası: %v", err)
 			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
@@ -196,10 +222,18 @@ func ListPublicKeys(db *sql.DB) http.HandlerFunc {
 		var keys []models.PublicKey
 		for rows.Next() {
 			var k models.PublicKey
-			if err := rows.Scan(&k.ID, &k.KeyName, &k.SshPublicKey, &k.FingerprintSHA256, &k.CreatedAt); err != nil {
+			var bannedUntil sql.NullTime
+			var banReason sql.NullString
+			if err := rows.Scan(&k.ID, &k.KeyName, &k.SshPublicKey, &k.FingerprintSHA256, &k.CreatedAt, &bannedUntil, &banReason); err != nil {
 				log.Printf("Public key verisi okunurken hata: %v", err)
 				http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
 				return
+			}
+			if bannedUntil.Valid {
+				k.BannedUntil = &bannedUntil.Time
+			}
+			if banReason.Valid {
+				k.BanReason = &banReason.String
 			}
 			keys = append(keys, k)
 		}
@@ -210,8 +244,8 @@ func ListPublicKeys(db *sql.DB) http.HandlerFunc {
 		}
 
 		var totalRecords int
-		countQuery := "SELECT COUNT(*) FROM public_keys"
-		db.QueryRow(countQuery).Scan(&totalRecords)
+		countQuery := "SELECT COUNT(*) FROM public_keys pk" + where
+		db.QueryRow(countQuery, countArgs...).Scan(&totalRecords)
 
 		response := struct {
 			TotalRecords int                `json:"total_records"`
@@ -254,5 +288,111 @@ func GetPublicKey(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(pk)
+	}
+}
+
+// GetKeyBanStatus, bir anahtarın şu anda yasaklı olup olmadığını döner.
+func GetKeyBanStatus(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		keyID, err := strconv.Atoi(chi.URLParam(r, "keyID"))
+		if err != nil {
+			http.Error(w, "Geçersiz anahtar ID'si", http.StatusBadRequest)
+			return
+		}
+
+		ban, err := services.ActiveBan(db, keyID)
+		if err != nil {
+			log.Printf("Yasak durumu sorgu hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if ban == nil {
+			json.NewEncoder(w).Encode(struct {
+				Banned bool `json:"banned"`
+			}{Banned: false})
+			return
+		}
+		json.NewEncoder(w).Encode(struct {
+			Banned bool            `json:"banned"`
+			Ban    *models.KeyBan  `json:"ban"`
+		}{Banned: true, Ban: ban})
+	}
+}
+
+// BanPublicKey, bir SSH anahtarını belirtilen dakika süresince yasaklar ve
+// bu anahtara bağlı bekleyen/aktif tüm kuralları derhal iptal eder.
+func BanPublicKey(db *sql.DB, ac agentclient.AgentCommunicator) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		keyID, err := strconv.Atoi(chi.URLParam(r, "keyID"))
+		if err != nil {
+			http.Error(w, "Geçersiz anahtar ID'si", http.StatusBadRequest)
+			return
+		}
+
+		var payload struct {
+			DurationMinutes int    `json:"duration_minutes"`
+			Reason          string `json:"reason"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Geçersiz istek gövdesi: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if payload.DurationMinutes <= 0 {
+			http.Error(w, "duration_minutes pozitif olmalı", http.StatusBadRequest)
+			return
+		}
+
+		ban, err := services.BanKey(db, ac, keyID, time.Duration(payload.DurationMinutes)*time.Minute, payload.Reason)
+		if err != nil {
+			services.Record(db, r, services.AuditLog{
+				Action:       services.ActionBanKey,
+				TargetType:   "public_key",
+				TargetID:     keyID,
+				Status:       "FAILURE",
+				ErrorMessage: err.Error(),
+			})
+			log.Printf("Anahtar yasaklama hatası: %v", err)
+			http.Error(w, "Sunucu hatası: Anahtar yasaklanamadı.", http.StatusInternalServerError)
+			return
+		}
+
+		services.Record(db, r, services.AuditLog{
+			Action:     services.ActionBanKey,
+			TargetType: "public_key",
+			TargetID:   keyID,
+			Status:     "SUCCESS",
+		})
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(ban)
+	}
+}
+
+// UnbanPublicKey, bir anahtar üzerindeki aktif yasağı erken kaldırır.
+func UnbanPublicKey(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		keyID, err := strconv.Atoi(chi.URLParam(r, "keyID"))
+		if err != nil {
+			http.Error(w, "Geçersiz anahtar ID'si", http.StatusBadRequest)
+			return
+		}
+
+		if err := services.UnbanKey(db, keyID); err != nil {
+			log.Printf("Yasak kaldırma hatası: %v", err)
+			http.Error(w, "Sunucu hatası: Yasak kaldırılamadı.", http.StatusInternalServerError)
+			return
+		}
+
+		services.Record(db, r, services.AuditLog{
+			Action:     services.ActionUnbanKey,
+			TargetType: "public_key",
+			TargetID:   keyID,
+			Status:     "SUCCESS",
+		})
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }

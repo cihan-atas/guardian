@@ -56,7 +56,13 @@ func runChecks(db *sql.DB, agentClient agentclient.AgentCommunicator) {
 
 // DEĞİŞİKLİK: *agentclient.Client yerine agentclient.AgentCommunicator kullanıyoruz.
 func processPendingRules(db *sql.DB, agentClient agentclient.AgentCommunicator) error {
-	query := "SELECT id FROM access_rules WHERE status = $1 AND valid_from <= NOW() AT TIME ZONE 'utc'"
+	// key_bans'ta hâlâ geçerli bir yasağı olan anahtarlara bağlı kurallar
+	// etkinleştirilmez; yasak süresi dolunca bir sonraki taramada normal
+	// şekilde etkinleşirler.
+	query := `
+		SELECT ar.id FROM access_rules ar
+		LEFT JOIN key_bans kb ON kb.public_key_id = ar.public_key_id AND kb.banned_until > NOW() AT TIME ZONE 'utc'
+		WHERE ar.status = $1 AND ar.valid_from <= NOW() AT TIME ZONE 'utc' AND kb.id IS NULL`
 	ruleIDs, err := getRuleIDsByQuery(db, query, statusPending)
 	if err != nil {
 		return fmt.Errorf("bekleyen kural ID'leri alınamadı: %w", err)

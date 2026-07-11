@@ -28,6 +28,8 @@ const (
 	ActionPatchRule     AuditAction = "PATCH_RULE"
 	ActionDeleteRule    AuditAction = "DELETE_RULE"
 	ActionTerminateSess AuditAction = "TERMINATE_SESSION"
+	ActionBanKey        AuditAction = "BAN_KEY"
+	ActionUnbanKey      AuditAction = "UNBAN_KEY"
 )
 
 type AuditLog struct {

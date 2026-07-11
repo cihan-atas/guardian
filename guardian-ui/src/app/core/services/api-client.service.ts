@@ -55,6 +55,9 @@ export interface Key {
   ssh_public_key: string;
   fingerprint_sha256: string;
   created_at: string;
+  /** Aktif yasak varsa liste yanıtında dolu gelir (LEFT JOIN key_bans). */
+  banned_until?: string;
+  ban_reason?: string;
 }
 
 export interface Rule {
@@ -91,6 +94,7 @@ export interface DashboardStats {
   total_keys: number;
   today_sessions: number;
   failed_sessions: number;
+  banned_keys: number;
 }
 
 export interface ParsedCommand {
@@ -103,13 +107,31 @@ export interface SessionDetails {
   session_info: {
     id: number;
     username: string;
+    server_id: number;
     server_hostname: string;
     server_ip: string;
     start_time: string;
     end_time?: string;
     status: string;
+    rule_id?: number;
+    system_user_id?: number;
+    public_key_id?: number;
+    public_key_name?: string;
   };
   commands: ParsedCommand[];
+}
+
+export interface KeyBan {
+  id: number;
+  public_key_id: number;
+  reason?: string;
+  banned_at: string;
+  banned_until: string;
+}
+
+export interface KeyBanStatus {
+  banned: boolean;
+  ban?: KeyBan;
 }
 
 export interface CreateServerPayload {
@@ -175,6 +197,14 @@ export interface SeriesChartData {
   series: ChartData[];
 }
 
+/** Tam komut bazında kullanım istatistiği (sunucu kırılımıyla). */
+export interface CommandStat {
+  command: string;
+  base: string;
+  count: number;
+  servers: Record<string, number>;
+}
+
 export interface ActiveSessionInfo {
   id: number;
   username: string;
@@ -201,13 +231,21 @@ export class ApiClientService {
 
    constructor(private http: HttpClient) { }
 
+  /** Liste sorgu parametrelerini üretir; boş search/status eklenmez. */
+  private listParams(page: number, limit: number, search?: string, status?: string): string {
+    let params = `page=${page}&limit=${limit}`;
+    if (search?.trim()) params += `&search=${encodeURIComponent(search.trim())}`;
+    if (status?.trim()) params += `&status=${encodeURIComponent(status.trim())}`;
+    return params;
+  }
+
     checkAuth(token: string): Observable<any> {
      const headers = new HttpHeaders({ 'Authorization': `Bearer ${token}` });
      return this.http.get(`${this.apiUrl}/auth/check`, { headers });
    }
 
-      getServers(page: number = 1, limit: number = 20): Observable<PaginatedResponse<Server>> {
-    return this.http.get<PaginatedResponse<Server>>(`${this.apiUrl}/servers?page=${page}&limit=${limit}`);
+      getServers(page: number = 1, limit: number = 20, search?: string): Observable<PaginatedResponse<Server>> {
+    return this.http.get<PaginatedResponse<Server>>(`${this.apiUrl}/servers?${this.listParams(page, limit, search)}`);
   }
    createServer(payload: CreateServerPayload): Observable<Server> {
      return this.http.post<Server>(`${this.apiUrl}/servers`, payload);
@@ -227,8 +265,8 @@ export class ApiClientService {
      return this.http.delete<void>(`${this.apiUrl}/servers/${serverId}`);
    }
 
-        getUsers(page: number = 1, limit: number = 20): Observable<PaginatedResponse<User>> {
-    return this.http.get<PaginatedResponse<User>>(`${this.apiUrl}/users?page=${page}&limit=${limit}`);
+        getUsers(page: number = 1, limit: number = 20, search?: string): Observable<PaginatedResponse<User>> {
+    return this.http.get<PaginatedResponse<User>>(`${this.apiUrl}/users?${this.listParams(page, limit, search)}`);
   }
    createUser(payload: CreateUserPayload): Observable<User> {
      return this.http.post<User>(`${this.apiUrl}/users`, payload);
@@ -237,8 +275,8 @@ export class ApiClientService {
      return this.http.delete<void>(`${this.apiUrl}/users/${userId}`);
    }
 
-       getKeys(page: number = 1, limit: number = 20): Observable<PaginatedResponse<Key>> {
-    return this.http.get<PaginatedResponse<Key>>(`${this.apiUrl}/keys?page=${page}&limit=${limit}`);
+       getKeys(page: number = 1, limit: number = 20, search?: string): Observable<PaginatedResponse<Key>> {
+    return this.http.get<PaginatedResponse<Key>>(`${this.apiUrl}/keys?${this.listParams(page, limit, search)}`);
   }
    createKey(payload: CreateKeyPayload): Observable<Key> {
      return this.http.post<Key>(`${this.apiUrl}/keys`, payload);
@@ -247,8 +285,8 @@ export class ApiClientService {
      return this.http.delete<void>(`${this.apiUrl}/keys/${keyId}`);
    }
 
-      getRules(page: number = 1, limit: number = 20): Observable<PaginatedResponse<Rule>> {
-    return this.http.get<PaginatedResponse<Rule>>(`${this.apiUrl}/rules?page=${page}&limit=${limit}`);
+      getRules(page: number = 1, limit: number = 20, search?: string): Observable<PaginatedResponse<Rule>> {
+    return this.http.get<PaginatedResponse<Rule>>(`${this.apiUrl}/rules?${this.listParams(page, limit, search)}`);
   }
    createRule(payload: CreateRulePayload): Observable<Rule> {
      return this.http.post<Rule>(`${this.apiUrl}/rules`, payload);
@@ -261,8 +299,8 @@ export class ApiClientService {
     return this.http.patch<Rule>(`${this.apiUrl}/rules/${ruleId}`, payload);
   }
 
-  getSessions(page: number = 1, limit: number = 20): Observable<PaginatedResponse<Session>> {
-    return this.http.get<PaginatedResponse<Session>>(`${this.apiUrl}/sessions?page=${page}&limit=${limit}`);
+  getSessions(page: number = 1, limit: number = 20, search?: string, status?: string): Observable<PaginatedResponse<Session>> {
+    return this.http.get<PaginatedResponse<Session>>(`${this.apiUrl}/sessions?${this.listParams(page, limit, search, status)}`);
   }
 
       getSessionReplay(sessionId: number): Observable<SessionReplay> {
@@ -281,6 +319,18 @@ export class ApiClientService {
     return this.http.delete(`${this.apiUrl}/sessions/${sessionId}`, { responseType: 'text' });
   }
 
+  getKeyBanStatus(keyId: number): Observable<KeyBanStatus> {
+    return this.http.get<KeyBanStatus>(`${this.apiUrl}/keys/${keyId}/ban`);
+  }
+
+  banKey(keyId: number, durationMinutes: number, reason?: string): Observable<KeyBan> {
+    return this.http.post<KeyBan>(`${this.apiUrl}/keys/${keyId}/ban`, { duration_minutes: durationMinutes, reason });
+  }
+
+  unbanKey(keyId: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/keys/${keyId}/ban`);
+  }
+
     getDashboardStats(): Observable<DashboardStats> {
     return this.http.get<DashboardStats>(`${this.apiUrl}/dashboard/stats`);
   }
@@ -291,6 +341,30 @@ export class ApiClientService {
 
   getTopServers(): Observable<ChartData[]> {
     return this.http.get<ChartData[]>(`${this.apiUrl}/dashboard/top-servers`);
+  }
+
+  getSessionStatusBreakdown(): Observable<ChartData[]> {
+    return this.http.get<ChartData[]>(`${this.apiUrl}/dashboard/session-status`);
+  }
+
+  getRuleStatusBreakdown(): Observable<ChartData[]> {
+    return this.http.get<ChartData[]>(`${this.apiUrl}/dashboard/rule-status`);
+  }
+
+  getTopCommands(): Observable<ChartData[]> {
+    return this.http.get<ChartData[]>(`${this.apiUrl}/dashboard/top-commands`);
+  }
+
+  getCommandStats(): Observable<CommandStat[]> {
+    return this.http.get<CommandStat[]>(`${this.apiUrl}/dashboard/command-stats`);
+  }
+
+  getUserActivity(): Observable<ChartData[]> {
+    return this.http.get<ChartData[]>(`${this.apiUrl}/dashboard/user-activity`);
+  }
+
+  getHourlyActivity(): Observable<ChartData[]> {
+    return this.http.get<ChartData[]>(`${this.apiUrl}/dashboard/hourly-activity`);
   }
 
   getActiveSessionsList(): Observable<ActiveSessionInfo[]> {

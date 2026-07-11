@@ -25,7 +25,7 @@ func TestParseSessionEvents(t *testing.T) {
 	now := time.Now()
 
 	// Sorgu metinleri burada tanımlı, bu sorun değil.
-	metaQuery := `SELECT s.id, s.username, s.start_time, s.end_time, s.status, sv.hostname, sv.ip_address FROM sessions s JOIN servers sv ON s.server_id = sv.id WHERE s.id = $1`
+	metaQuery := `SELECT s.id, s.username, s.server_id, s.start_time, s.end_time, s.status, sv.hostname, sv.ip_address, s.rule_id, ar.system_user_id, ar.public_key_id, pk.key_name FROM sessions s JOIN servers sv ON s.server_id = sv.id LEFT JOIN access_rules ar ON s.rule_id = ar.id LEFT JOIN public_keys pk ON ar.public_key_id = pk.id WHERE s.id = $1`
 	eventsQuery := `SELECT event_type, data, event_time FROM session_events WHERE session_id = $1 ORDER BY event_time ASC, id ASC`
 
 	testCases := []struct {
@@ -39,8 +39,8 @@ func TestParseSessionEvents(t *testing.T) {
 			name: "Başarılı - Tek bir komut ve çıktısı",
 			setupMock: func(mock sqlmock.Sqlmock) {
 				// DÜZELTME: metaRows'u doğrudan bu testin içinde oluşturuyoruz.
-				metaRows := sqlmock.NewRows([]string{"id", "username", "start_time", "end_time", "status", "hostname", "ip_address"}).
-					AddRow(sessionID, "testuser", now, nil, "active", "test-server", "127.0.0.1")
+				metaRows := sqlmock.NewRows([]string{"id", "username", "server_id", "start_time", "end_time", "status", "hostname", "ip_address", "rule_id", "system_user_id", "public_key_id", "key_name"}).
+					AddRow(sessionID, "testuser", 1, now, nil, "active", "test-server", "127.0.0.1", nil, nil, nil, nil)
 
 				mock.ExpectQuery(metaQuery).
 					WithArgs(sessionID).
@@ -65,8 +65,8 @@ func TestParseSessionEvents(t *testing.T) {
 			name: "Başarılı - ANSI escape kodları içeren çıktı",
 			setupMock: func(mock sqlmock.Sqlmock) {
 				// DÜZELTME: metaRows'u doğrudan bu testin içinde oluşturuyoruz.
-				metaRows := sqlmock.NewRows([]string{"id", "username", "start_time", "end_time", "status", "hostname", "ip_address"}).
-					AddRow(sessionID, "testuser", now, nil, "active", "test-server", "127.0.0.1")
+				metaRows := sqlmock.NewRows([]string{"id", "username", "server_id", "start_time", "end_time", "status", "hostname", "ip_address", "rule_id", "system_user_id", "public_key_id", "key_name"}).
+					AddRow(sessionID, "testuser", 1, now, nil, "active", "test-server", "127.0.0.1", nil, nil, nil, nil)
 
 				mock.ExpectQuery(metaQuery).WithArgs(sessionID).WillReturnRows(metaRows)
 
@@ -85,8 +85,8 @@ func TestParseSessionEvents(t *testing.T) {
 		{
 			name: "Başarılı - Backspace ile düzeltilen komut doğru yeniden oluşturulur",
 			setupMock: func(mock sqlmock.Sqlmock) {
-				metaRows := sqlmock.NewRows([]string{"id", "username", "start_time", "end_time", "status", "hostname", "ip_address"}).
-					AddRow(sessionID, "testuser", now, nil, "active", "test-server", "127.0.0.1")
+				metaRows := sqlmock.NewRows([]string{"id", "username", "server_id", "start_time", "end_time", "status", "hostname", "ip_address", "rule_id", "system_user_id", "public_key_id", "key_name"}).
+					AddRow(sessionID, "testuser", 1, now, nil, "active", "test-server", "127.0.0.1", nil, nil, nil, nil)
 
 				mock.ExpectQuery(metaQuery).WithArgs(sessionID).WillReturnRows(metaRows)
 
@@ -115,8 +115,8 @@ func TestParseSessionEvents(t *testing.T) {
 			name: "Başarılı - Hiç event yok",
 			setupMock: func(mock sqlmock.Sqlmock) {
 				// DÜZELTME: metaRows'u doğrudan bu testin içinde oluşturuyoruz.
-				metaRows := sqlmock.NewRows([]string{"id", "username", "start_time", "end_time", "status", "hostname", "ip_address"}).
-					AddRow(sessionID, "testuser", now, nil, "active", "test-server", "127.0.0.1")
+				metaRows := sqlmock.NewRows([]string{"id", "username", "server_id", "start_time", "end_time", "status", "hostname", "ip_address", "rule_id", "system_user_id", "public_key_id", "key_name"}).
+					AddRow(sessionID, "testuser", 1, now, nil, "active", "test-server", "127.0.0.1", nil, nil, nil, nil)
 
 				mock.ExpectQuery(metaQuery).WithArgs(sessionID).WillReturnRows(metaRows)
 				eventRows := sqlmock.NewRows([]string{"event_type", "data", "event_time"})

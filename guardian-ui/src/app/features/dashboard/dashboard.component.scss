@@ -1,0 +1,36 @@
+:host {
+  display: block;
+}
+
+// Grafik kartı ortak dili — HTML'de tekrarlanan uzun class zincirini toplar.
+.chart-card {
+  @apply bg-dark-card rounded-xl border border-dark-border p-6 flex flex-col overflow-hidden;
+}
+
+.chart-head {
+  @apply mb-4;
+}
+
+.chart-kicker {
+  @apply text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1;
+}
+
+.chart-title {
+  @apply text-base font-semibold text-text-main flex items-center gap-2;
+}
+
+.chart-sub {
+  @apply text-xs text-text-secondary mt-1;
+}
+
+.empty-note {
+  @apply text-text-secondary text-sm py-10 text-center;
+}
+
+// KPI kartı hover'da hafifçe yükselsin.
+.kpi-card {
+  &:hover {
+    transform: translateY(-2px);
+  }
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}

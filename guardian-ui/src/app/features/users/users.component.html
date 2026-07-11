@@ -1,122 +1,125 @@
-<!-- guardian-ui/src/app/features/users/users.component.html -->
-
-<div class="flex justify-between items-center mb-8">
+<header class="flex flex-wrap items-end justify-between gap-4 mb-6">
   <div>
-    <h1 class="text-3xl font-bold text-text-main">Sistem Kullanıcıları</h1>
-    <p class="mt-1 text-text-secondary">Hedef sunucularda tanımlı olan kullanıcıların listesi.</p>
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Envanter</p>
+    <h1 class="text-2xl font-bold text-text-main tracking-tight">Sistem Kullanıcıları</h1>
+    <p class="mt-1 text-sm text-text-secondary">Hedef sunucularda oturum açılabilecek işletim sistemi kullanıcıları.</p>
   </div>
-  <button (click)="openModal()" class="flex items-center bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
-    <fa-icon [icon]="faPlus" class="mr-2"></fa-icon>
-    <span>Yeni Kullanıcı Ekle</span>
-  </button>
+  <div class="flex items-center gap-3">
+    <button (click)="loadUsers(currentPage)" [disabled]="isLoading"
+            class="w-9 h-9 flex items-center justify-center rounded-full bg-dark-card border border-dark-border text-text-secondary hover:text-accent hover:border-accent transition-colors disabled:opacity-50"
+            title="Yenile">
+      <fa-icon [icon]="faSync" [class.animate-spin]="isLoading"></fa-icon>
+    </button>
+    <button (click)="openModal()" class="flex items-center bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow-sm">
+      <fa-icon [icon]="faPlus" class="mr-2"></fa-icon>
+      <span>Yeni Kullanıcı</span>
+    </button>
+  </div>
+</header>
+
+<div class="flex items-center gap-3 mb-4">
+  <div class="relative flex items-center ml-auto">
+    <fa-icon [icon]="faSearch" class="absolute left-3 text-text-secondary text-xs pointer-events-none"></fa-icon>
+    <input type="text" [(ngModel)]="searchTerm" (input)="onSearchInput()"
+           placeholder="kullanıcı adı ara…"
+           class="bg-dark-card border border-dark-border rounded-lg pl-8 pr-3 py-2 text-sm text-text-main w-56 focus:outline-none focus:border-accent">
+  </div>
 </div>
 
-<div *ngIf="isLoading" class="text-center text-text-secondary py-10">
-  <p>Veriler yükleniyor...</p>
-</div>
-<div *ngIf="error" class="bg-danger-900 border border-danger-700 text-danger-200 px-4 py-3 rounded" role="alert">
-  <strong class="font-bold">Hata!</strong>
-  <span class="block sm:inline">{{ error }}</span>
+<div *ngIf="error" class="bg-danger-900/30 border border-danger-700 text-danger-200 px-4 py-3 rounded-lg mb-4" role="alert">
+  <strong class="font-bold">Hata!</strong> <span class="block sm:inline">{{ error }}</span>
 </div>
 
-<div *ngIf="!isLoading && !error" class="bg-dark-card shadow-md rounded-lg overflow-x-auto border border-dark-border">
-  <table class="min-w-full leading-normal">
-    <thead>
-      <tr>
-        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">ID</th>
-        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">Kullanıcı Adı</th>
-        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">Açıklama</th>
-        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">İşlemler</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr *ngIf="users.length === 0 && !isLoading">
-        <td colspan="4">
-          <div class="text-center py-12 px-6">
-            <fa-icon [icon]="faUsers" class="text-5xl text-text-secondary opacity-50"></fa-icon>
-            <h3 class="mt-4 text-lg font-medium text-text-main">Kayıtlı Kullanıcı Bulunamadı</h3>
-            <p class="mt-1 text-sm text-text-secondary">Hemen yeni bir sistem kullanıcısı tanımlayarak başlayın.</p>
-            <button (click)="openModal()" class="mt-6 flex mx-auto items-center bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow-sm">
-              <fa-icon [icon]="faPlus" class="mr-2"></fa-icon>
-              <span>Yeni Kullanıcı Ekle</span>
-            </button>
-          </div>
-        </td>
-      </tr>
-      <tr *ngFor="let user of users" class="hover:bg-dark-interactive">
-        <td class="px-5 py-5 border-b border-dark-border text-sm">{{ user.id }}</td>
-        <td class="px-5 py-5 border-b border-dark-border text-sm font-medium">{{ user.username }}</td>
-        
-        <!-- ======================= DEĞİŞİKLİK BURADA ======================= -->
-        <!-- description nesnesinin 'Valid' olup olmadığını kontrol et.       -->
-        <!-- Eğer geçerliyse içindeki 'String' değerini göster, değilse '-' koy. -->
-        <td class="px-5 py-5 border-b border-dark-border text-sm text-text-secondary">
-          {{ user.description.Valid ? user.description.String : '-' }}
-        </td>
-        <!-- ======================= DEĞİŞİKLİK BİTTİ ======================= -->
-        
-        <td class="px-5 py-5 border-b border-dark-border text-sm whitespace-nowrap">
-          <ng-container *ngIf="!user.username.startsWith('example-')">
-            <button (click)="openModal(user)" class="text-accent hover:text-accent-hover transition-colors font-semibold mr-4">
-              Düzenle
-            </button>
-            <button (click)="onDeleteUser(user.id)" class="text-danger-500 hover:text-danger-400 transition-colors font-semibold">
-              Sil
-            </button>
-          </ng-container>
-
-          <ng-container *ngIf="user.username.startsWith('example-')">
-            <span class="px-2 py-1 text-xs font-medium text-text-secondary bg-dark-interactive rounded-full">
+<div class="bg-dark-card rounded-xl overflow-hidden border border-dark-border">
+  <div class="overflow-x-auto">
+    <table class="min-w-full">
+      <thead>
+        <tr class="bg-dark-main/60">
+          <th class="th-cell">ID</th>
+          <th class="th-cell">Kullanıcı Adı</th>
+          <th class="th-cell">Açıklama</th>
+          <th class="th-cell">Eklenme</th>
+          <th class="th-cell">İşlemler</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngIf="isLoading">
+          <td colspan="5" class="text-center py-12 text-text-secondary">Veriler yükleniyor…</td>
+        </tr>
+        <tr *ngIf="!isLoading && users.length === 0">
+          <td colspan="5">
+            <div class="text-center py-14 px-6">
+              <fa-icon [icon]="faUsers" class="text-4xl text-text-secondary opacity-40"></fa-icon>
+              <h3 class="mt-4 text-base font-medium text-text-main">Kullanıcı bulunamadı</h3>
+              <p class="mt-1 text-sm text-text-secondary">
+                {{ searchTerm ? 'Bu aramayla eşleşen kullanıcı yok.' : 'İlk sistem kullanıcınızı şimdi ekleyin.' }}
+              </p>
+              <button *ngIf="!searchTerm" (click)="openModal()" class="mt-6 flex mx-auto items-center bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow-sm">
+                <fa-icon [icon]="faPlus" class="mr-2"></fa-icon>
+                <span>Yeni Kullanıcı</span>
+              </button>
+            </div>
+          </td>
+        </tr>
+        <tr *ngFor="let user of users" class="hover:bg-dark-interactive/50 transition-colors" [class.hidden]="isLoading">
+          <td class="td-cell font-mono text-text-secondary">#{{ user.id }}</td>
+          <td class="td-cell">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-full bg-accent/10 text-accent flex items-center justify-center shrink-0 text-xs font-bold uppercase">
+                {{ user.username.charAt(0) }}
+              </div>
+              <span class="font-medium font-mono">{{ user.username }}</span>
+            </div>
+          </td>
+          <td class="td-cell text-text-secondary max-w-xs">
+            <span class="block truncate" [title]="desc(user)">{{ desc(user) || '—' }}</span>
+          </td>
+          <td class="td-cell font-mono text-xs text-text-secondary">{{ user.created_at | date:'dd.MM.yyyy' }}</td>
+          <td class="td-cell whitespace-nowrap">
+            <a routerLink="/rules" class="text-text-secondary hover:text-accent transition-colors font-semibold text-sm mr-4"
+               title="Bu kullanıcının erişim kuralları">
+              <fa-icon [icon]="faRules" class="mr-1"></fa-icon>Kurallar
+            </a>
+            <ng-container *ngIf="!user.username.startsWith('example-')">
+              <button (click)="openModal(user)" class="text-accent hover:text-accent-hover transition-colors font-semibold text-sm mr-4">Düzenle</button>
+              <button (click)="onDeleteUser(user)" class="text-danger-500 hover:text-danger-400 transition-colors font-semibold text-sm">Sil</button>
+            </ng-container>
+            <span *ngIf="user.username.startsWith('example-')" class="px-2 py-1 text-xs font-medium text-text-secondary bg-dark-interactive rounded-full">
               Örnek Kayıt
             </span>
-          </ng-container>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-
-  <div *ngIf="totalRecords > 0" class="px-5 py-3 border-t border-dark-border flex flex-col xs:flex-row items-center xs:justify-between">
-    <span class="text-xs xs:text-sm text-text-main">
-      Toplam {{ totalRecords }} kayıttan {{ users.length }} tanesi gösteriliyor.
-    </span>
-    <div class="inline-flex mt-2 xs:mt-0">
-      <button (click)="prevPage()" [disabled]="currentPage === 1"
-              class="text-sm bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-l disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-        Önceki
-      </button>
-      <span class="text-sm bg-dark-main font-semibold py-2 px-4 text-text-secondary border-t border-b border-dark-border">
-        Sayfa {{ currentPage }} / {{ totalPages }}
-      </span>
-      <button (click)="nextPage()" [disabled]="currentPage === totalPages || totalPages === 0"
-              class="text-sm bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-r disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-        Sonraki
-      </button>
-    </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
+
+  <app-pagination [page]="currentPage" [limit]="limit" [total]="totalRecords"
+                  (pageChange)="loadUsers($event)"></app-pagination>
 </div>
 
-<div *ngIf="isModalOpen" class="fixed inset-0 bg-black bg-opacity-70 z-40 flex justify-center items-center" (click)="closeModal()">
-  <div class="bg-dark-card rounded-lg shadow-2xl p-8 w-full max-w-lg relative z-50 animate-fade-in border border-dark-border" (click)="$event.stopPropagation()">
-    <h2 class="text-2xl font-bold mb-6 text-text-main">
+<div *ngIf="isModalOpen" class="fixed inset-0 bg-black/70 z-40 flex justify-center items-center p-4" (click)="closeModal()">
+  <div class="bg-dark-card rounded-xl shadow-2xl p-8 w-full max-w-lg relative z-50 animate-fade-in border border-dark-border" (click)="$event.stopPropagation()">
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Envanter</p>
+    <h2 class="text-xl font-bold mb-6 text-text-main">
       {{ isEditMode ? 'Kullanıcıyı Düzenle' : 'Yeni Sistem Kullanıcısı' }}
     </h2>
     <form [formGroup]="userForm" (ngSubmit)="onSubmit()">
-      <div class="space-y-6">
+      <div class="space-y-5">
         <div>
           <label for="username" class="block text-sm font-medium text-text-secondary">Kullanıcı Adı</label>
-          <input type="text" id="username" formControlName="username" 
-                 class="mt-1 block w-full p-2 bg-dark-main border border-dark-border text-text-main rounded-md shadow-sm focus:ring-accent focus:border-accent sm:text-sm disabled:bg-dark-interactive disabled:cursor-not-allowed"
-                 placeholder="ec2-user, root, ubuntu...">
+          <input type="text" id="username" formControlName="username"
+                 class="mt-1 block w-full p-2 bg-dark-main border border-dark-border rounded-lg focus:ring-accent focus:border-accent sm:text-sm text-text-main font-mono disabled:bg-dark-interactive disabled:cursor-not-allowed"
+                 placeholder="deploy">
         </div>
         <div>
           <label for="description" class="block text-sm font-medium text-text-secondary">Açıklama (İsteğe Bağlı)</label>
-          <input type="text" id="description" formControlName="description" 
-                 class="mt-1 block w-full p-2 bg-dark-main border border-dark-border text-text-main rounded-md shadow-sm focus:ring-accent focus:border-accent sm:text-sm"
-                 placeholder="AWS EC2 default user">
+          <input type="text" id="description" formControlName="description"
+                 class="mt-1 block w-full p-2 bg-dark-main border border-dark-border rounded-lg focus:ring-accent focus:border-accent sm:text-sm text-text-main"
+                 placeholder="CI/CD dağıtım kullanıcısı">
         </div>
       </div>
       <div class="mt-8 pt-6 border-t border-dark-border flex justify-end space-x-3">
-        <button type="button" (click)="closeModal()" class="bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-lg border border-dark-border transition-colors">
+        <button type="button" (click)="closeModal()" class="bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-lg transition-colors">
           İptal
         </button>
         <button type="submit" [disabled]="userForm.invalid" class="bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors">

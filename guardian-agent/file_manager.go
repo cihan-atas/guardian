@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 )
 
 var ErrKeyNotFound = errors.New("silinecek anahtar dosyada bulunamadı")
@@ -60,7 +62,14 @@ func addKeyToSpecificFile(path string, publicKey string, ruleID int) error {
 	agentPath := "/usr/local/bin/guardian-agent"
 	command := fmt.Sprintf(`command="%s proxy --rule-id=%d"`, agentPath, ruleID)
 
-	lineToAdd := fmt.Sprintf("%s,%s,restrict %s\n", envVars, command, trimmedPublicKey)
+	// "restrict" port/X11/agent-forwarding ve ~/.ssh/rc dahil her şeyi kapatır,
+	// ama bu arada PTY tahsisini de (no-pty) kapatır. PTY olmadan istemci
+	// yerel terminalini raw mode'a hiç almaz; tüm girdi satır satır (kernel'in
+	// canonical/cooked mode tamponuyla) gönderilir, bu da ok tuşu/tab/Ctrl+C
+	// gibi her şeyi bozar. OpenSSH seçenekleri soldan sağa işlendiği ve sonraki
+	// seçenek önceki kısıtlamayı geçersiz kıldığı için "restrict"ten SONRA
+	// "pty" ekleyerek sadece PTY'yi geri açıyoruz, diğer kısıtlamalar duruyor.
+	lineToAdd := fmt.Sprintf("%s,%s,restrict,pty %s\n", envVars, command, trimmedPublicKey)
 
 	if _, err := f.WriteString(lineToAdd); err != nil {
 		return fmt.Errorf("anahtar dosyaya yazılamadı: %w", err)
@@ -200,13 +209,31 @@ func terminateProcessBySessionID(sessionID int) error {
 		return fmt.Errorf("proses bulunamadı (PID: %d): %w", pid, err)
 	}
 
-	log.Printf("❗️ Proses sonlandırılıyor... PID: %d, Session ID: %d", pid, sessionID)
-	if err := process.Kill(); err != nil {
+	log.Printf("❗️ Oturum nazikçe sonlandırılıyor (SIGTERM)... PID: %d, Session ID: %d", pid, sessionID)
+	if err := process.Signal(syscall.SIGTERM); err != nil {
 		// Proses zaten ölmüşse "no such process" hatası alınır. Bu normal bir durumdur.
-		// Bu durumda PID dosyasının kalıntı olmaması için yine de sileriz.
-		log.Printf("[WARN] Proses sonlandırılırken hata (muhtemelen zaten kapalı): %v", err)
+		log.Printf("[WARN] SIGTERM gönderilemedi (muhtemelen zaten kapalı): %v", err)
 	} else {
-		log.Printf("✅ Proses başarıyla sonlandırıldı: PID %d", pid)
+		// guardian-agent'ın proxy sürecine nazikçe kapanması (SSH oturumunu
+		// düzgün kapatıp uzaktaki shell'in terminal modlarını sıfırlamasına
+		// fırsat vermesi) için kısa bir süre tanıyoruz. Yanıt vermezse
+		// SIGKILL ile zorlarız; sonsuza kadar takılı kalmasın diye.
+		exited := false
+		for i := 0; i < 20; i++ {
+			time.Sleep(100 * time.Millisecond)
+			if probeErr := process.Signal(syscall.Signal(0)); probeErr != nil {
+				exited = true
+				break
+			}
+		}
+		if !exited {
+			log.Printf("[WARN] Proses SIGTERM'e 2 saniye içinde yanıt vermedi, SIGKILL ile zorlanıyor: PID %d", pid)
+			if err := process.Kill(); err != nil {
+				log.Printf("[WARN] SIGKILL de başarısız (muhtemelen zaten kapalı): %v", err)
+			}
+		} else {
+			log.Printf("✅ Oturum nazikçe sonlandırıldı: PID %d", pid)
+		}
 	}
 
 	// Her durumda (başarılı veya başarısız sonlandırma) PID dosyasını temizle.

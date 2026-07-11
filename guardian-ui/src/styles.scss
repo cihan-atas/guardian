@@ -1,8 +1,14 @@
-@use 'ngx-toastr/toastr'; 
+@use 'ngx-toastr/toastr';
 @use 'tailwindcss/base';
 @use 'tailwindcss/components';
 @use 'tailwindcss/utilities';
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+// xterm.css GLOBAL yüklenmeli: xterm terminal DOM'unu runtime'da JS ile
+// oluşturuyor, bu elementler Angular'ın component-scope attribute'unu almıyor.
+// Component styleUrls'ünde yüklenirse (scoped) xterm'in konumlandırma CSS'i
+// (.xterm-viewport{position:absolute} vb.) uygulanmıyor ve ekran karardığı
+// gibi kaydırma da bozuluyordu.
+@import 'xterm/css/xterm.css';
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 
 // HTML ve Body için varsayılan karanlık tema renklerini uygula.
@@ -40,6 +46,18 @@ html, body {
   color: white !important;
 }
 
+// Liste ekranlarının (oturumlar/kurallar/sunucular/kullanıcılar/anahtarlar)
+// ortak tablo dili — 5 ekranda kopyalanan hücre sınıflarının tek kaynağı.
+.th-cell {
+  @apply px-5 py-3 border-b border-dark-border text-left text-[11px] font-semibold text-text-secondary uppercase tracking-wider whitespace-nowrap;
+}
+.td-cell {
+  @apply px-5 py-4 border-b border-dark-border/60 text-sm text-text-main;
+}
+.action-btn {
+  @apply w-8 h-8 flex items-center justify-center rounded-full hover:bg-dark-interactive transition-colors;
+}
+
 // ngx-charts'ın karanlık tema metin renklerini düzelt
 .ngx-charts-dark {
   // Eksen etiketleri, legend yazıları vb. için
@@ -47,4 +65,5 @@ html, body {
     fill: #8b949e !important; // text-secondary rengimiz
   }
 }
+
 

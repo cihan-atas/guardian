@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -60,9 +61,17 @@ func ListRules(db *sql.DB) http.HandlerFunc {
 		}
 		offset := (page - 1) * limit
 
-		query := `
-			SELECT 
-				ar.id, ar.server_id, ar.public_key_id, ar.system_user_id, 
+		// Opsiyonel arama: sunucu adı, kullanıcı adı veya anahtar adı üzerinde ILIKE.
+		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		where := ""
+		args := []interface{}{}
+		if search != "" {
+			where = " WHERE (s.hostname ILIKE $1 OR su.username ILIKE $1 OR pk.key_name ILIKE $1)"
+			args = append(args, "%"+search+"%")
+		}
+		query := fmt.Sprintf(`
+			SELECT
+				ar.id, ar.server_id, ar.public_key_id, ar.system_user_id,
 				ar.valid_from, ar.valid_until, ar.status, ar.created_at,
 				s.hostname AS server_hostname,
 				su.username,
@@ -71,10 +80,11 @@ func ListRules(db *sql.DB) http.HandlerFunc {
 			JOIN servers s ON ar.server_id = s.id
 			JOIN system_users su ON ar.system_user_id = su.id
 			JOIN public_keys pk ON ar.public_key_id = pk.id
-			ORDER BY ar.id DESC 
-			LIMIT $1 OFFSET $2`
-
-		rows, err := db.Query(query, limit, offset)
+			%s ORDER BY ar.id DESC
+			LIMIT $%d OFFSET $%d`, where, len(args)+1, len(args)+2)
+		countArgs := append([]interface{}{}, args...)
+		args = append(args, limit, offset)
+		rows, err := db.Query(query, args...)
 		if err != nil {
 			log.Printf("Veritabanı zenginleştirilmiş kural sorgu hatası: %v", err)
 			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
@@ -103,8 +113,12 @@ func ListRules(db *sql.DB) http.HandlerFunc {
 		}
 
 		var totalRecords int
-		countQuery := "SELECT COUNT(*) FROM access_rules"
-		db.QueryRow(countQuery).Scan(&totalRecords)
+		countQuery := `
+			SELECT COUNT(*) FROM access_rules ar
+			JOIN servers s ON ar.server_id = s.id
+			JOIN system_users su ON ar.system_user_id = su.id
+			JOIN public_keys pk ON ar.public_key_id = pk.id` + where
+		db.QueryRow(countQuery, countArgs...).Scan(&totalRecords)
 
 		response := struct {
 			TotalRecords int                        `json:"total_records"`
@@ -154,6 +168,17 @@ func CreateRule(db *sql.DB, ac agentclient.AgentCommunicator) http.HandlerFunc {
 				ErrorMessage: fmt.Sprintf("User validation failed on agent: %v", err),
 			})
 			http.Error(w, fmt.Sprintf("Kullanıcı doğrulanamadı: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		if ban, banErr := services.ActiveBan(db, rule.PublicKeyID); banErr == nil && ban != nil {
+			services.Record(db, r, services.AuditLog{
+				Action:       services.ActionCreateRule,
+				TargetType:   "rule",
+				Status:       "FAILURE",
+				ErrorMessage: fmt.Sprintf("Public key %d is banned until %s", rule.PublicKeyID, ban.BannedUntil),
+			})
+			http.Error(w, fmt.Sprintf("Bu SSH anahtarı %s tarihine kadar yasaklı.", ban.BannedUntil.Local().Format("2006-01-02 15:04")), http.StatusForbidden)
 			return
 		}
 

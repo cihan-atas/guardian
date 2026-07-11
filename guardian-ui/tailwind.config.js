@@ -12,6 +12,10 @@ module.exports = {
       // Font ailesi tanımınız mükemmel, aynen kalıyor.
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
+        // Terminal/SSH ürünü olduğumuz için sayısal veri ve durum
+        // okumalarında (dashboard metrikleri, zaman damgaları) bir
+        // "terminal readout" hissi vermek üzere eklendi.
+        mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
       },
 
       // --- BAŞLANGIÇ: YENİ KARANLIK TEMA RENK PALETİ ---
@@ -25,6 +29,10 @@ module.exports = {
         'accent': {
           'DEFAULT': '#2f81f7',     // Ana Vurgu Rengi (Butonlar, Linkler)
           'hover': '#388bfd'       // Vurgu Rengi Hover
+        },
+        'live': {
+          'DEFAULT': '#39c5cf',     // Canlı/aktif durum vurgusu (dashboard nabız göstergesi)
+          'dim': '#164d52'
         },
         'text': {
           'main': '#c9d1d9',        // Ana Metin Rengi

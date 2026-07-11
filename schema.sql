@@ -132,6 +132,35 @@ ALTER SEQUENCE public.public_keys_id_seq OWNED BY public.public_keys.id;
 
 
 --
+-- Name: key_bans; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.key_bans (
+    id integer NOT NULL,
+    public_key_id integer NOT NULL,
+    reason text,
+    banned_at timestamp with time zone DEFAULT now() NOT NULL,
+    banned_until timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: key_bans_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.key_bans_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.key_bans_id_seq OWNED BY public.key_bans.id;
+
+
+--
 -- Name: servers; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -288,6 +317,13 @@ ALTER TABLE ONLY public.public_keys ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
+-- Name: key_bans id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.key_bans ALTER COLUMN id SET DEFAULT nextval('public.key_bans_id_seq'::regclass);
+
+
+--
 -- Name: servers id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -345,6 +381,29 @@ ALTER TABLE ONLY public.public_keys
 
 ALTER TABLE ONLY public.public_keys
     ADD CONSTRAINT public_keys_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: key_bans key_bans_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.key_bans
+    ADD CONSTRAINT key_bans_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: key_bans key_bans_public_key_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.key_bans
+    ADD CONSTRAINT key_bans_public_key_id_fkey FOREIGN KEY (public_key_id) REFERENCES public.public_keys(id) ON DELETE CASCADE;
+
+
+--
+-- Name: idx_key_bans_public_key_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_key_bans_public_key_id ON public.key_bans USING btree (public_key_id);
 
 
 --

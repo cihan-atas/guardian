@@ -70,7 +70,8 @@ func TestProcessPendingRules(t *testing.T) {
 	mockAgent := NewMockAgentClient(nil) // Bu testte asenkron çağrı yok.
 	ruleID := 101
 
-	mockDB.ExpectQuery("SELECT id FROM access_rules WHERE status = $1 AND valid_from <= NOW() AT TIME ZONE 'utc'").
+	// Yasaklı anahtarların kuralları aktifleştirilmez (LEFT JOIN key_bans).
+	mockDB.ExpectQuery("SELECT ar.id FROM access_rules ar LEFT JOIN key_bans kb ON kb.public_key_id = ar.public_key_id AND kb.banned_until > NOW() AT TIME ZONE 'utc' WHERE ar.status = $1 AND ar.valid_from <= NOW() AT TIME ZONE 'utc' AND kb.id IS NULL").
 		WithArgs(statusPending).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(ruleID))
 

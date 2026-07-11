@@ -13,8 +13,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -142,6 +144,28 @@ func handleProxy() {
 		log.Fatalf("Arka plan SSH oturumu oluşturulamadı: %v", err)
 	}
 	defer session.Close()
+
+	// Admin "zorla sonlandır" dediğinde bu prosese SIGTERM gönderilir (bkz.
+	// terminateProcessBySessionID). SIGKILL yerine burada nazikçe sadece SSH
+	// oturumunu kapatıyoruz: uzaktaki shell normal şekilde SIGHUP alıp kendi
+	// temizliğini (terminal modlarını sıfırlama escape kodları dahil) yapma
+	// şansı buluyor, ayrıca session.Wait() normal döner ve defer'lar
+	// (removePidFile, endSessionOnServer) düzgün çalışır. Ham SIGKILL, hem
+	// bu defer'ları atlıyordu hem de istemci tarafındaki terminali "uygulama
+	// imleç modu" gibi bir ara durumda bırakabiliyordu.
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		// SIGTERM: admin "zorla sonlandır" dediğinde bize gönderilir.
+		// SIGHUP: kullanıcı terminali exit demeden kapatınca (pencereyi çarpı ile
+		// kapatma / kısayol) sshd, forced-command olan bu prosese SIGHUP yollar.
+		// İkisini de yakalayıp oturumu nazikçe kapatıyoruz ki session.Wait()
+		// dönsün ve defer'lar (endSessionOnServer "ended") çalışsın; aksi halde
+		// oturum sonsuza dek "active" kalıyordu.
+		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGHUP)
+		sig := <-sigCh
+		log.Printf("⚠️ Sonlandırma sinyali (%v) alındı, SSH oturumu nazikçe kapatılıyor...", sig)
+		session.Close()
+	}()
 
 	if validUntil, err := getRuleValidity(ruleID, config); err == nil && validUntil != nil {
 		go enforceSessionTimeout(session, sessionID, *validUntil, config)
@@ -289,6 +313,12 @@ func setupPipes(session *ssh.Session, ws *websocket.Conn, width, height int) {
 		defer stdinPipe.Close()
 		wsInputWriter := &websocketWriter{conn: ws, eventType: "input"}
 		io.Copy(io.MultiWriter(stdinPipe, wsInputWriter), os.Stdin)
+		// os.Stdin EOF verdi = istemcinin giriş akışı kapandı (kullanıcı bağlantıyı
+		// kesti). Uzak interaktif shell kendi PTY'sinde takılı kalıp session.Wait()'i
+		// süresiz bloke etmesin diye oturumu burada kapatıyoruz; böylece temizlik
+		// defer'ları çalışır ve oturum "active" takılı kalmaz.
+		log.Println("İstemci girişi (stdin) kapandı, uzak oturum sonlandırılıyor...")
+		session.Close()
 	}()
 
 	modes := ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 14400, ssh.TTY_OP_OSPEED: 14400}

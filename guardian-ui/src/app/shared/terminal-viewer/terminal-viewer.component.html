@@ -1,0 +1,46 @@
+<div #rootEl class="terminal-viewer flex flex-col h-full w-full bg-dark-main">
+
+  <div class="flex items-center gap-1 px-2 py-1.5 bg-dark-card border-b border-dark-border">
+    <button (click)="toggleSearch()" title="Ara" class="toolbar-btn" [class.toolbar-btn-active]="isSearchOpen">
+      <fa-icon [icon]="faSearch"></fa-icon>
+    </button>
+
+    <div *ngIf="isSearchOpen" class="flex items-center gap-1 ml-1">
+      <input
+        type="text"
+        [(ngModel)]="searchTerm"
+        (input)="onSearchInput()"
+        (keydown.enter)="searchNext()"
+        placeholder="çıktıda ara…"
+        class="bg-dark-main border border-dark-border rounded px-2 py-1 text-sm text-text-main w-40 focus:outline-none focus:border-accent"
+        autofocus>
+      <span class="text-xs text-text-secondary w-12 text-center font-mono">{{ searchResultText }}</span>
+      <button (click)="searchPrevious()" title="Önceki" class="toolbar-btn"><fa-icon [icon]="faChevronUp"></fa-icon></button>
+      <button (click)="searchNext()" title="Sonraki" class="toolbar-btn"><fa-icon [icon]="faChevronDown"></fa-icon></button>
+    </div>
+
+    <div class="flex items-center gap-1 ml-auto">
+      <button (click)="decreaseFontSize()" title="Yazıyı küçült" class="toolbar-btn"><fa-icon [icon]="faMinus"></fa-icon></button>
+      <span class="text-xs text-text-secondary font-mono w-8 text-center">{{ fontSize }}px</span>
+      <button (click)="increaseFontSize()" title="Yazıyı büyüt" class="toolbar-btn"><fa-icon [icon]="faPlus"></fa-icon></button>
+      <button (click)="downloadLog()" title="Ham kaydı indir" class="toolbar-btn"><fa-icon [icon]="faDownload"></fa-icon></button>
+      <button (click)="toggleFullscreen()" title="Tam ekran" class="toolbar-btn">
+        <fa-icon [icon]="isFullscreen ? faCompress : faExpand"></fa-icon>
+      </button>
+    </div>
+  </div>
+
+  <div #containerEl class="terminal-stage relative flex-grow min-h-0 overflow-hidden">
+    <!-- Terminal absolute konumlandırılır: içerik yüksekliği konteyneri
+         büyütemez, böylece fitAddon her zaman gerçek (sınırlı) boyutu ölçer.
+         Aksi halde flex-grow + içerik-yüksekliği geri besleme döngüsü terminali
+         binlerce piksel yükseklikte render edip ekranı karartıyordu. -->
+    <div #terminalEl class="absolute inset-0 p-3"></div>
+
+    <button *ngIf="isBehindLive" (click)="jumpToLive()"
+            class="absolute bottom-4 right-4 z-10 flex items-center gap-2 bg-accent hover:bg-accent-hover text-white text-xs font-semibold py-2 px-3 rounded-full shadow-lg transition-colors">
+      <fa-icon [icon]="faArrowDown"></fa-icon> CANLIYA DÖN
+    </button>
+  </div>
+
+</div>

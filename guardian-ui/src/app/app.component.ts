@@ -3,6 +3,8 @@ import { Component } from '@angular/core';
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
 import { SidebarComponent } from './layout/sidebar/sidebar.component';
 import { CommonModule } from '@angular/common';
+import { ConfirmDialogComponent } from './shared/ui/confirm-dialog/confirm-dialog.component';
+import { BanDialogComponent } from './shared/ui/ban-dialog/ban-dialog.component';
 import { Observable } from 'rxjs';
 import { AuthService } from './core/services/auth.service';
 import { filter, map } from 'rxjs/operators';
@@ -10,7 +12,7 @@ import { filter, map } from 'rxjs/operators';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, SidebarComponent, CommonModule],
+  imports: [RouterOutlet, SidebarComponent, CommonModule, ConfirmDialogComponent, BanDialogComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })

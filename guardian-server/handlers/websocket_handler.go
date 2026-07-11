@@ -70,8 +70,8 @@ func handleAgentConnection(w http.ResponseWriter, r *http.Request, db *sql.DB, h
 		}
 		if messageType == websocket.TextMessage {
 			var msg struct {
-				Type string          `json:"type"`
-				Data json.RawMessage `json:"data"`
+				Type string `json:"type"`
+				Data []byte `json:"data"`
 			}
 			if err := json.Unmarshal(message, &msg); err == nil {
 				switch msg.Type {
@@ -81,7 +81,7 @@ func handleAgentConnection(w http.ResponseWriter, r *http.Request, db *sql.DB, h
 					}
 
 				case "input", "output":
-					if _, dbErr := db.Exec(eventSQL, sessionID, msg.Type, []byte(msg.Data)); dbErr != nil {
+					if _, dbErr := db.Exec(eventSQL, sessionID, msg.Type, msg.Data); dbErr != nil {
 						log.Printf("HATA: Oturum olayı veritabanına kaydedilemedi (Oturum ID %d): %v", sessionID, dbErr)
 					}
 					broadcastMsg := &hub.BroadcastMessage{

@@ -20,11 +20,16 @@ type SessionDetails struct {
 type SessionMetadata struct {
 	ID             int        `json:"id"`
 	Username       string     `json:"username"`
+	ServerID       int        `json:"server_id"`
 	ServerHostname string     `json:"server_hostname"`
 	ServerIP       string     `json:"server_ip"`
 	StartTime      time.Time  `json:"start_time"`
 	EndTime        *time.Time `json:"end_time,omitempty"`
 	Status         string     `json:"status"`
+	RuleID         *int       `json:"rule_id,omitempty"`
+	SystemUserID   *int       `json:"system_user_id,omitempty"`
+	PublicKeyID    *int       `json:"public_key_id,omitempty"`
+	PublicKeyName  *string    `json:"public_key_name,omitempty"`
 }
 
 type ParsedCommand struct {
@@ -43,16 +48,20 @@ func squash(text string) string {
 func ParseSessionEvents(db *sql.DB, sessionID int) (*SessionDetails, error) {
 	var meta SessionMetadata
 	metaQuery := squash(`
-		SELECT 
-			s.id, s.username, s.start_time, s.end_time, s.status, 
-			sv.hostname, sv.ip_address
+		SELECT
+			s.id, s.username, s.server_id, s.start_time, s.end_time, s.status,
+			sv.hostname, sv.ip_address,
+			s.rule_id, ar.system_user_id, ar.public_key_id, pk.key_name
 		FROM sessions s
 		JOIN servers sv ON s.server_id = sv.id
+		LEFT JOIN access_rules ar ON s.rule_id = ar.id
+		LEFT JOIN public_keys pk ON ar.public_key_id = pk.id
 		WHERE s.id = $1`)
 
 	err := db.QueryRow(metaQuery, sessionID).Scan(
-		&meta.ID, &meta.Username, &meta.StartTime, &meta.EndTime, &meta.Status,
+		&meta.ID, &meta.Username, &meta.ServerID, &meta.StartTime, &meta.EndTime, &meta.Status,
 		&meta.ServerHostname, &meta.ServerIP,
+		&meta.RuleID, &meta.SystemUserID, &meta.PublicKeyID, &meta.PublicKeyName,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -131,18 +140,38 @@ func ParseSessionEvents(db *sql.DB, sessionID int) (*SessionDetails, error) {
 	return details, nil
 }
 
+// cleanString, ham girdi akışındaki terminal escape/kontrol dizilerini
+// temizleyip yalnızca yazdırılabilir karakterleri bırakır.
+//
+// Desteklenen diziler:
+//   - CSI:  ESC [ ... <son bayt 0x40–0x7E>   (renk, imleç konumu vb.)
+//   - SS3:  ESC O <bir karakter>             (uygulama imleç modu: ok tuşları
+//                                             → ESC O A/B/C/D — eski kod bunları
+//                                             temizlemediği için çıktıda "OAOA"
+//                                             gibi çöp kalıyordu)
+//   - diğer ESC ön ekli diziler savunma amaçlı ESC + 1 karakter atlanır.
+// Sekme (0x09, tamamlama tetikleyicisi) de düşürülür.
 func cleanString(s string) string {
 	var result strings.Builder
-	inEscapeCode := false
-	for i, r := range s {
-		if r == 0x1B && i+1 < len(s) && s[i+1] == '[' {
-			inEscapeCode = true
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if r == 0x1B { // ESC
+			if i+1 < len(runes) && runes[i+1] == '[' { // CSI
+				i += 2
+				for i < len(runes) && !(runes[i] >= 0x40 && runes[i] <= 0x7E) {
+					i++
+				}
+				continue // döngü i++ ile son baytı da atlar
+			}
+			if i+1 < len(runes) && runes[i+1] == 'O' { // SS3 (ok tuşları vb.)
+				i += 2 // ESC ve O'yu atla; döngü i++ son karakteri atlar
+				continue
+			}
+			i++ // bilinmeyen ESC dizisi: ESC + sonraki karakteri atla
 			continue
 		}
-		if inEscapeCode {
-			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-				inEscapeCode = false
-			}
+		if r == '\t' {
 			continue
 		}
 		if unicode.IsPrint(r) {

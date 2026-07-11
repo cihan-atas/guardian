@@ -1,32 +1,83 @@
-<div class="flex flex-col h-screen w-screen overflow-x-hidden font-sans bg-dark-card text-text-main">
-   <header class="bg-dark-card text-text-main p-4 shadow-md flex justify-between items-center border-b border-dark-border">
-    <h1 class="text-xl font-bold">Guardian Canlı Oturum İzleme</h1>
-    <div class="flex items-center space-x-4">
-      <div id="status-indicator" class="px-3 py-1 rounded-full text-sm shadow-lg flex items-center"
+<div class="flex flex-col h-screen w-screen overflow-x-hidden font-sans bg-dark-main text-text-main">
+
+  <!-- Üst kontrol çubuğu (SOC konsol hissi) -->
+  <header class="bg-dark-card border-b border-dark-border px-4 py-2.5 flex items-center justify-between gap-4 shrink-0">
+    <div class="flex items-center gap-3 min-w-0">
+      <div class="w-9 h-9 rounded-lg bg-danger-900/40 text-danger-400 flex items-center justify-center shrink-0">
+        <fa-icon [icon]="faShield"></fa-icon>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <h1 class="text-sm font-bold text-text-main">CANLI OTURUM</h1>
+          <span class="font-mono text-xs text-text-secondary">#{{ sessionId }}</span>
+          <span *ngIf="status.isLive" class="flex items-center gap-1.5 text-[10px] uppercase tracking-widest bg-danger-900/50 text-danger-300 px-2 py-0.5 rounded-full font-bold border border-danger-800/60">
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger-500 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-danger-500"></span>
+            </span>
+            REC {{ durationLabel }}
+          </span>
+        </div>
+        <div *ngIf="info" class="flex items-center gap-3 text-xs text-text-secondary font-mono truncate">
+          <span>{{ info.username }}<span class="opacity-50">@</span>{{ info.server_hostname }}</span>
+          <span class="opacity-40">·</span>
+          <span>bağlantı {{ info.start_time | date:'HH:mm:ss' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 shrink-0">
+      <div *ngIf="!status.isLive" class="px-3 py-1.5 rounded-lg text-xs font-semibold"
            [ngClass]="{
-             'bg-success-900/50 text-success-300': status.color === 'green',
              'bg-danger-900/50 text-danger-300': status.color === 'red',
              'bg-warning-900/50 text-warning-300': status.color === 'orange',
+             'bg-success-900/50 text-success-300': status.color === 'green',
              'bg-dark-interactive text-text-secondary': status.color === 'black'
            }">
-        <span class="mr-2 text-xl" [class.animate-pulse]="status.isLive">
-          {{ status.color === 'green' ? '🟢' : (status.color === 'red' ? '🔴' : (status.color === 'orange' ? '🟡' : '⚫')) }}
-        </span>
         {{ status.message }}
       </div>
-      <button (click)="disconnect()" [disabled]="!ws" class="bg-dark-interactive hover:bg-dark-border text-text-main font-bold py-1 px-4 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-        Durdur
+      <button (click)="disconnect()" [disabled]="!ws" class="flex items-center gap-2 bg-dark-interactive hover:bg-dark-border text-text-main text-xs font-semibold py-1.5 px-3 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+        <fa-icon [icon]="faPause"></fa-icon> Durdur
       </button>
     </div>
   </header>
 
-   <main class="flex-grow p-4 bg-dark-main relative">
-    <div #terminal class="h-full w-full"></div>
+  <!-- Oturum meta çipleri -->
+  <div *ngIf="info" class="bg-dark-card/50 px-4 py-2 border-b border-dark-border flex flex-wrap items-center gap-2">
+    <a routerLink="/users" class="info-chip"><span class="info-chip-label">kullanıcı</span><span class="font-mono">{{ info.username }}</span></a>
+    <a routerLink="/servers" class="info-chip"><span class="info-chip-label">sunucu</span><span class="font-mono">{{ info.server_hostname }} ({{ info.server_ip }})</span></a>
+    <a *ngIf="info.rule_id" routerLink="/rules" class="info-chip"><span class="info-chip-label">kural</span><span class="font-mono">#{{ info.rule_id }}</span></a>
+    <a *ngIf="info.public_key_id" routerLink="/keys" class="info-chip"><span class="info-chip-label">anahtar</span><span class="font-mono">{{ info.public_key_name }}</span></a>
+
+    <span *ngIf="keyBanStatus?.banned" class="text-xs font-semibold bg-danger-900/50 text-danger-300 px-2.5 py-1.5 rounded-full flex items-center gap-1.5">
+      <fa-icon [icon]="faBan"></fa-icon> Anahtar yasaklı ({{ keyBanStatus?.ban?.banned_until | date:'short' }})
+    </span>
+    <button *ngIf="info.public_key_id && !keyBanStatus?.banned" (click)="banKey()"
+            class="ml-auto text-xs font-semibold bg-warning-900/40 text-warning-300 hover:bg-warning-900/70 py-1.5 px-3 rounded-lg transition-colors flex items-center gap-1.5">
+      <fa-icon [icon]="faBan"></fa-icon> Anahtarı Yasakla
+    </button>
+    <button *ngIf="keyBanStatus?.banned" (click)="unbanKey()"
+            class="ml-auto text-xs font-semibold bg-dark-interactive hover:bg-dark-border text-text-main py-1.5 px-3 rounded-lg transition-colors">
+      Yasağı Kaldır
+    </button>
+  </div>
+
+  <!-- Terminal sahnesi -->
+  <main class="flex-grow min-h-0 bg-dark-main relative overflow-hidden">
+    <app-terminal-viewer
+      [cols]="cols"
+      [rows]="rows"
+      [followMode]="true"
+      [filename]="'session-' + sessionId + '-live.log'"
+      (ready)="onViewerReady()">
+    </app-terminal-viewer>
   </main>
 
-   <footer class="bg-dark-card p-3 shadow-inner flex items-center justify-end border-t border-dark-border">
-    <button (click)="killSession()" [disabled]="!ws" class="bg-danger-600 hover:bg-danger-700 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
-      OTURUMU ZORLA SONLANDIR
+  <!-- Müdahale çubuğu -->
+  <footer class="bg-dark-card border-t border-dark-border p-3 flex items-center justify-between shrink-0">
+    <span class="text-xs text-text-secondary font-mono">Şüpheli aktivite tespit ederseniz oturumu anında sonlandırabilirsiniz.</span>
+    <button (click)="killSession()" [disabled]="!ws" class="bg-danger-600 hover:bg-danger-700 text-white font-bold py-2 px-4 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+      <fa-icon [icon]="faTerminate"></fa-icon> OTURUMU ZORLA SONLANDIR
     </button>
   </footer>
 </div>

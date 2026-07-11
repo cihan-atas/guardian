@@ -1,39 +1,116 @@
-<div class="flex flex-col h-screen w-full font-sans bg-dark-card text-text-main">
-   <header class="bg-dark-card text-text-main p-4 shadow-md flex justify-between items-center border-b border-dark-border">
-    <h1 class="text-xl font-bold">Guardian Oturum Tekrar Oynatma (ID: {{ sessionId }})</h1>
-    <button (click)="loadSession()" class="bg-accent hover:bg-accent-hover text-white font-bold py-1 px-4 rounded transition-colors">Yeniden Yükle</button>
+<div class="flex flex-col h-screen w-full font-sans bg-dark-main text-text-main">
+
+  <!-- Üst kontrol çubuğu (SOC konsol hissi) -->
+  <header class="bg-dark-card border-b border-dark-border px-4 py-2.5 flex items-center justify-between gap-4 shrink-0">
+    <div class="flex items-center gap-3 min-w-0">
+      <div class="w-9 h-9 rounded-lg bg-blue-900/40 text-accent flex items-center justify-center shrink-0">
+        <fa-icon [icon]="faShield"></fa-icon>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <h1 class="text-sm font-bold text-text-main">OTURUM KAYDI</h1>
+          <span class="font-mono text-xs text-text-secondary">#{{ sessionId }}</span>
+          <span class="text-[10px] uppercase tracking-widest bg-dark-interactive text-text-secondary px-1.5 py-0.5 rounded">ARŞİV</span>
+        </div>
+        <div *ngIf="info" class="flex items-center gap-3 text-xs text-text-secondary font-mono truncate">
+          <span>{{ info.username }}<span class="opacity-50">@</span>{{ info.server_hostname }}</span>
+          <span class="opacity-40">·</span>
+          <span>{{ info.start_time | date:'dd.MM.yyyy HH:mm' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 shrink-0">
+      <div *ngIf="riskyCount > 0" class="flex items-center gap-1.5 text-xs font-semibold bg-danger-900/40 text-danger-300 px-2.5 py-1.5 rounded-lg border border-danger-800/50">
+        <fa-icon [icon]="faRisky"></fa-icon> {{ riskyCount }} riskli komut
+      </div>
+      <button (click)="isCommandsPanelOpen = !isCommandsPanelOpen"
+              class="flex items-center gap-2 text-xs font-semibold py-1.5 px-3 rounded transition-colors"
+              [ngClass]="isCommandsPanelOpen ? 'bg-accent text-white' : 'bg-dark-interactive text-text-secondary hover:text-text-main'">
+        <fa-icon [icon]="faListUl"></fa-icon> Komutlar
+      </button>
+      <button (click)="reload()" title="Yeniden yükle" class="w-8 h-8 flex items-center justify-center rounded bg-dark-interactive text-text-secondary hover:text-text-main transition-colors">
+        <fa-icon [icon]="faRestart"></fa-icon>
+      </button>
+    </div>
   </header>
 
-   <main class="flex-grow p-4 bg-dark-main">
-    <div #terminal class="h-full w-full"></div>
-  </main>
+  <div class="flex flex-grow min-h-0 overflow-hidden">
+    <!-- Terminal sahnesi -->
+    <main class="flex-grow min-h-0 bg-dark-main relative overflow-hidden">
+      <app-terminal-viewer
+        [cols]="cols"
+        [rows]="rows"
+        [filename]="'session-' + sessionId + '-replay.log'"
+        (ready)="onViewerReady()">
+      </app-terminal-viewer>
 
-   <footer class="bg-dark-card p-3 shadow-inner flex items-center justify-between space-x-4 border-t border-dark-border">
-    <div class="flex items-center space-x-4">
-       <button (click)="player.isPlaying ? pause() : play()" [disabled]="!player.isLoaded" title="Oynat/Duraklat" class="w-10 h-10 flex items-center justify-center text-xl text-text-secondary hover:text-text-main disabled:opacity-50 transition-colors">
-        <fa-icon *ngIf="!player.isPlaying" [icon]="faPlay"></fa-icon>
-        <fa-icon *ngIf="player.isPlaying" [icon]="faPause"></fa-icon>
-      </button>
-      <button (click)="restart()" [disabled]="!player.isLoaded" title="Yeniden Başlat" class="w-10 h-10 flex items-center justify-center text-xl text-text-secondary hover:text-text-main disabled:opacity-50 transition-colors">
-        <fa-icon [icon]="faRedo"></fa-icon>
-      </button>
-     </div>
-    
-    <div class="flex-grow flex items-center mx-4">
-      <span class="text-xs mr-2 w-12 text-right text-text-secondary">{{ player.currentTime }}</span>
-      <input type="range" [(ngModel)]="player.progress" (input)="onProgressChange($event)" class="w-full h-2 bg-dark-interactive rounded-lg appearance-none cursor-pointer accent-accent" min="0" max="100" step="0.1" [disabled]="!player.isLoaded">
-      <span class="text-xs ml-2 w-12 text-text-secondary">{{ player.totalTime }}</span>
+      <div *ngIf="isLoaded && commands.length === 0" class="absolute inset-x-0 bottom-3 text-center text-xs text-text-secondary">
+        Bu oturumda ayrıştırılmış komut yok — tüm çıktı gösteriliyor.
+      </div>
+    </main>
+
+    <!-- Komut listesi (gezinme paneli) -->
+    <aside *ngIf="isCommandsPanelOpen" class="w-96 shrink-0 border-l border-dark-border bg-dark-card flex flex-col">
+      <div class="px-4 py-2.5 border-b border-dark-border flex items-center justify-between">
+        <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Komut Akışı</span>
+        <span class="font-mono text-xs text-text-secondary">{{ commands.length }} komut</span>
+      </div>
+      <div class="flex-grow overflow-y-auto">
+        <div *ngIf="commands.length === 0" class="text-center text-text-secondary text-sm py-10 px-4">
+          <fa-icon [icon]="faTerminal" class="text-2xl mb-2"></fa-icon>
+          <p>Kayıtlı komut bulunamadı.</p>
+        </div>
+        <button *ngFor="let cmd of commands; let i = index"
+            (click)="selectCommand(i)"
+            class="cmd-item w-full text-left px-4 py-2.5 border-l-2 transition-colors block"
+            [class.active]="activeIndex === i"
+            [ngClass]="{
+              'bg-dark-interactive': activeIndex === i,
+              'border-danger-500': isRisky(cmd),
+              'border-accent': activeIndex === i && !isRisky(cmd),
+              'border-transparent': activeIndex !== i && !isRisky(cmd)
+            }">
+          <div class="flex items-center gap-2">
+            <span class="font-mono text-[10px] text-text-secondary/60 w-6 shrink-0">{{ i + 1 }}</span>
+            <fa-icon *ngIf="isRisky(cmd)" [icon]="faRisky" class="text-danger-400 text-xs shrink-0"></fa-icon>
+            <span class="font-mono text-sm truncate" [ngClass]="isRisky(cmd) ? 'text-danger-300' : 'text-text-main'">{{ cmd.command }}</span>
+            <span class="font-mono text-[10px] text-text-secondary ml-auto shrink-0">{{ cmd.timestamp | date:'HH:mm:ss' }}</span>
+          </div>
+          <p *ngIf="outputPreview(cmd)" class="font-mono text-[11px] text-text-secondary/60 truncate mt-1 pl-8">{{ outputPreview(cmd) }}</p>
+        </button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Komut gezgini (medya oynatıcı DEĞİL — kare kare komut geçişi) -->
+  <footer class="bg-dark-card border-t border-dark-border px-4 py-3 flex items-center gap-4 shrink-0">
+    <button (click)="step(-1)" [disabled]="!isLoaded || activeIndex <= 0"
+            class="nav-btn" title="Önceki komut (← )">
+      <fa-icon [icon]="faPrev"></fa-icon>
+      <span class="hidden sm:inline">Önceki</span>
+    </button>
+
+    <div class="flex-grow min-w-0 flex items-center gap-3 bg-dark-main border border-dark-border rounded-lg px-4 py-2">
+      <span class="font-mono text-xs text-text-secondary shrink-0">
+        {{ commands.length ? (activeIndex + 1) : 0 }} / {{ commands.length }}
+      </span>
+      <span class="opacity-30 shrink-0">|</span>
+      <fa-icon *ngIf="activeCommand && isRisky(activeCommand)" [icon]="faRisky" class="text-danger-400 shrink-0"></fa-icon>
+      <span class="font-mono text-sm truncate"
+            [ngClass]="activeCommand && isRisky(activeCommand) ? 'text-danger-300' : 'text-text-main'">
+        <ng-container *ngIf="activeCommand">$ {{ activeCommand.command }}</ng-container>
+        <span *ngIf="!activeCommand" class="text-text-secondary">Komut seçilmedi</span>
+      </span>
+      <span *ngIf="activeCommand" class="font-mono text-xs text-text-secondary ml-auto shrink-0 flex items-center gap-1.5">
+        <fa-icon [icon]="faClock"></fa-icon>{{ activeCommand.timestamp | date:'HH:mm:ss' }}
+      </span>
     </div>
 
-    <div class="flex items-center space-x-2">
-      <label for="speedControl" class="text-sm text-text-secondary">Hız:</label>
-      <select [(ngModel)]="player.playbackSpeed" class="bg-dark-main text-text-main px-2 py-1 rounded border border-dark-border disabled:opacity-50" [disabled]="!player.isLoaded">
-        <option [ngValue]="0.5">0.5x</option>
-        <option [ngValue]="1">1x (Normal)</option>
-        <option [ngValue]="2">2x</option>
-        <option [ngValue]="4">4x</option>
-        <option [ngValue]="8">8x</option>
-      </select>
-    </div>
+    <button (click)="step(1)" [disabled]="!isLoaded || activeIndex >= commands.length - 1"
+            class="nav-btn" title="Sonraki komut (→)">
+      <span class="hidden sm:inline">Sonraki</span>
+      <fa-icon [icon]="faNext"></fa-icon>
+    </button>
   </footer>
 </div>

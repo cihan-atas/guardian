@@ -1,4 +1,4 @@
-<div *ngIf="(isAuthenticated$ | async) && !(isFullScreen$ | async)" class="flex min-h-screen bg-dark-main">
+<div *ngIf="(isAuthenticated$ | async) && !(isFullScreen$ | async)" class="flex h-screen overflow-hidden bg-dark-main">
   <app-sidebar></app-sidebar>
   <main class="flex-1 overflow-y-auto p-10 border-l border-dark-border">
     <router-outlet></router-outlet>
@@ -6,3 +6,7 @@
 </div>
  
 <router-outlet *ngIf="!(isAuthenticated$ | async) || (isFullScreen$ | async)"></router-outlet>
+
+<!-- Global modallar: her sayfadan servisle açılır (ConfirmDialogService / BanDialogService) -->
+<app-confirm-dialog></app-confirm-dialog>
+<app-ban-dialog></app-ban-dialog>

@@ -62,8 +62,21 @@ func ListServers(db *sql.DB) http.HandlerFunc {
 			limit = 8
 		}
 		offset := (page - 1) * limit
-		query := "SELECT id, hostname, ip_address, description, created_at FROM servers ORDER BY id ASC LIMIT $1 OFFSET $2"
-		rows, err := db.Query(query, limit, offset)
+
+		// Opsiyonel arama: hostname veya IP üzerinde ILIKE.
+		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		where := ""
+		args := []interface{}{}
+		if search != "" {
+			where = " WHERE (hostname ILIKE $1 OR ip_address ILIKE $1)"
+			args = append(args, "%"+search+"%")
+		}
+		query := fmt.Sprintf(
+			"SELECT id, hostname, ip_address, description, created_at FROM servers%s ORDER BY id ASC LIMIT $%d OFFSET $%d",
+			where, len(args)+1, len(args)+2)
+		countArgs := append([]interface{}{}, args...)
+		args = append(args, limit, offset)
+		rows, err := db.Query(query, args...)
 		if err != nil {
 			log.Printf("Veritabanı sunucu listeleme hatası: %v", err)
 			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
@@ -86,8 +99,8 @@ func ListServers(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		var totalRecords int
-		countQuery := "SELECT COUNT(*) FROM servers"
-		if err := db.QueryRow(countQuery).Scan(&totalRecords); err != nil {
+		countQuery := "SELECT COUNT(*) FROM servers" + where
+		if err := db.QueryRow(countQuery, countArgs...).Scan(&totalRecords); err != nil {
 			log.Printf("Toplam sunucu sayısı alınamadı: %v", err)
 		}
 		response := struct {

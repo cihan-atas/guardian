@@ -1,142 +1,178 @@
-<div class="flex justify-between items-center mb-8">
+<header class="flex flex-wrap items-end justify-between gap-4 mb-6">
   <div>
-    <h1 class="text-3xl font-bold text-text-main">Oturumlar</h1>
-    <p class="mt-1 text-text-secondary">Sistemdeki tüm aktif ve tamamlanmış SSH oturumları.</p>
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Kayıt & İzleme</p>
+    <h1 class="text-2xl font-bold text-text-main tracking-tight">Oturumlar</h1>
+    <p class="mt-1 text-sm text-text-secondary">Sistemdeki tüm aktif ve tamamlanmış SSH oturumları.</p>
   </div>
-  <button (click)="loadSessions(currentPage)" [disabled]="isLoading" 
-          class="flex items-center bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-lg transition-colors shadow-sm disabled:opacity-50">
+  <button (click)="loadSessions(currentPage)" [disabled]="isLoading"
+          class="w-9 h-9 flex items-center justify-center rounded-full bg-dark-card border border-dark-border text-text-secondary hover:text-accent hover:border-accent transition-colors disabled:opacity-50"
+          title="Yenile">
     <fa-icon [icon]="faSync" [class.animate-spin]="isLoading"></fa-icon>
-    <span class="ml-2">Yenile</span>
   </button>
+</header>
+
+<!-- Filtre çubuğu -->
+<div class="flex flex-wrap items-center gap-3 mb-4">
+  <div class="flex items-center gap-1.5 bg-dark-card border border-dark-border rounded-lg p-1">
+    <button *ngFor="let f of statusFilters" (click)="setFilter(f)"
+            class="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors"
+            [ngClass]="activeFilter === f ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-main'">
+      {{ f.label }}
+    </button>
+  </div>
+  <div class="relative flex items-center ml-auto">
+    <fa-icon [icon]="faSearch" class="absolute left-3 text-text-secondary text-xs pointer-events-none"></fa-icon>
+    <input type="text" [(ngModel)]="searchTerm" (input)="onSearchInput()"
+           placeholder="kullanıcı veya sunucu ara…"
+           class="bg-dark-card border border-dark-border rounded-lg pl-8 pr-3 py-2 text-sm text-text-main w-56 focus:outline-none focus:border-accent">
+  </div>
 </div>
 
-<div *ngIf="isLoading" class="text-center text-text-secondary py-10">
-  <p>Veriler yükleniyor...</p>
-</div>
-
-<div *ngIf="error" class="bg-danger-900 border border-danger-700 text-danger-200 px-4 py-3 rounded" role="alert">
+<div *ngIf="error" class="bg-danger-900/30 border border-danger-700 text-danger-200 px-4 py-3 rounded-lg mb-4" role="alert">
   <strong class="font-bold">Hata!</strong> <span class="block sm:inline">{{ error }}</span>
 </div>
 
-<div *ngIf="!isLoading && !error" class="bg-dark-card shadow-md rounded-lg overflow-x-auto border border-dark-border">
-    <table class="min-w-full leading-normal">
-    <thead>
-    <tr>
-        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">ID</th>
-        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">Durum</th>
-        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">Kullanıcı</th>
-        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">Sunucu</th>
-        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">Başlangıç</th>
-        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">Bitiş</th>
-        <th class="px-5 py-3 border-b-2 border-dark-border bg-dark-main text-center text-xs font-semibold text-text-secondary uppercase tracking-wider">İşlemler</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr *ngIf="sessions.length === 0 && !isLoading">
-        <td colspan="7">
-          <div class="text-center py-12 px-6">
-            <fa-icon [icon]="faSessions" class="text-5xl text-text-secondary opacity-50"></fa-icon>
-            <h3 class="mt-4 text-lg font-medium text-text-main">Kayıtlı Oturum Bulunamadı</h3>
-            <p class="mt-1 text-sm text-text-secondary">Sistemde henüz bir SSH oturumu kaydedilmemiş.</p>
-          </div>
-        </td>
-      </tr>
-      <tr *ngFor="let session of sessions" class="hover:bg-dark-interactive">
-        <td class="px-5 py-5 border-b border-dark-border text-sm">{{ session.id }}</td>
-        <td class="px-5 py-5 border-b border-dark-border text-sm">
-          <span class="relative inline-block px-3 py-1 font-semibold leading-tight rounded-full text-xs" [ngClass]="{
-            'text-success-300 bg-success-900/50': session.status === 'active',
-            'text-slate-300 bg-slate-700/50': session.status === 'ended' || session.status === 'timed_out',
-            'text-danger-300 bg-danger-900/50': session.status.startsWith('error')
-          }">
-            <span class="relative">{{ session.status }}</span>
-          </span>
-        </td>
-      <td class="px-5 py-5 border-b border-dark-border text-sm font-medium">{{ session.username }}</td>
-        <td class="px-5 py-5 border-b border-dark-border text-sm font-medium">
-            <div>{{ session.server_hostname }}</div>
-            <div class="text-xs text-text-secondary">{{ session.server_ip }}</div>
-        </td>
-        <td class="px-5 py-5 border-b border-dark-border text-sm">{{ session.start_time | date:'short' }}</td>
-        <td class="px-5 py-5 border-b border-dark-border text-sm">{{ session.end_time ? (session.end_time | date:'short') : '-' }}</td>
-        <td class="px-5 py-5 border-b border-dark-border text-sm text-center">
-          <div class="flex items-center justify-center space-x-2">
-            <button *ngIf="session.status === 'active'" (click)="openLiveReplay(session.id)" title="Canlı İzle"
-                    class="w-8 h-8 flex items-center justify-center text-accent hover:text-accent-hover transition-colors rounded-full hover:bg-dark-interactive focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
-              <fa-icon [icon]="faLive"></fa-icon>
-            </button>
-            <button *ngIf="session.status !== 'active'" (click)="openReplay(session.id)" title="Tekrar Oynat"
-                    class="w-8 h-8 flex items-center justify-center text-purple-400 hover:text-purple-300 transition-colors rounded-full hover:bg-dark-interactive focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
-              <fa-icon [icon]="faReplay"></fa-icon>
-            </button>
-            <button (click)="showCommands(session.id)" title="Komutları Görüntüle"
-                    class="w-8 h-8 flex items-center justify-center text-text-secondary hover:text-text-main transition-colors rounded-full hover:bg-dark-interactive focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500">
-              <fa-icon [icon]="faDetails"></fa-icon>
-            </button>
-            <button *ngIf="session.status === 'active'" (click)="terminate(session)" title="Oturumu Sonlandır"
-                    class="w-8 h-8 flex items-center justify-center text-danger-500 hover:text-danger-400 transition-colors rounded-full hover:bg-dark-interactive focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-danger-500">
-              <fa-icon [icon]="faTerminate"></fa-icon>
-            </button>
-          </div>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-
-  <div *ngIf="totalRecords > 0" class="px-5 py-3 border-t border-dark-border flex flex-col xs:flex-row items-center xs:justify-between">
-    <span class="text-xs xs:text-sm text-text-main">
-      Toplam {{ totalRecords }} kayıttan {{ sessions.length }} tanesi gösteriliyor.
-    </span>
-    <div class="inline-flex mt-2 xs:mt-0">
-      <button (click)="prevPage()" [disabled]="currentPage === 1" class="text-sm bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-l disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-        Önceki
-      </button>
-      <span class="text-sm bg-dark-main font-semibold py-2 px-4 text-text-secondary border-t border-b border-dark-border">
-        Sayfa {{ currentPage }} / {{ totalPages }}
-      </span>
-      <button (click)="nextPage()" [disabled]="currentPage === totalPages || totalPages === 0" class="text-sm bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-r disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-        Sonraki
-      </button>
-    </div>
+<div class="bg-dark-card rounded-xl overflow-hidden border border-dark-border">
+  <div class="overflow-x-auto">
+    <table class="min-w-full">
+      <thead>
+        <tr class="bg-dark-main/60">
+          <th class="th-cell">ID</th>
+          <th class="th-cell">Durum</th>
+          <th class="th-cell">Kullanıcı</th>
+          <th class="th-cell">Sunucu</th>
+          <th class="th-cell">Başlangıç</th>
+          <th class="th-cell">Süre</th>
+          <th class="th-cell text-center">İşlemler</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngIf="isLoading">
+          <td colspan="7" class="text-center py-12 text-text-secondary">
+            <fa-icon [icon]="faSpinner" class="fa-spin text-2xl text-accent"></fa-icon>
+          </td>
+        </tr>
+        <tr *ngIf="!isLoading && sessions.length === 0">
+          <td colspan="7">
+            <div class="text-center py-14 px-6">
+              <fa-icon [icon]="faSessions" class="text-4xl text-text-secondary opacity-40"></fa-icon>
+              <h3 class="mt-4 text-base font-medium text-text-main">Oturum bulunamadı</h3>
+              <p class="mt-1 text-sm text-text-secondary">
+                {{ searchTerm || activeFilter.statuses ? 'Bu filtreyle eşleşen oturum yok.' : 'Sistemde henüz bir SSH oturumu kaydedilmemiş.' }}
+              </p>
+            </div>
+          </td>
+        </tr>
+        <tr *ngFor="let session of sessions" class="hover:bg-dark-interactive/50 transition-colors" [class.hidden]="isLoading">
+          <td class="td-cell font-mono text-text-secondary">#{{ session.id }}</td>
+          <td class="td-cell"><app-status-badge [status]="session.status"></app-status-badge></td>
+          <td class="td-cell font-medium">{{ session.username }}</td>
+          <td class="td-cell">
+            <div class="font-medium">{{ session.server_hostname }}</div>
+            <div class="text-xs font-mono text-text-secondary">{{ session.server_ip }}</div>
+          </td>
+          <td class="td-cell font-mono text-xs">{{ session.start_time | date:'dd.MM.yyyy HH:mm' }}</td>
+          <td class="td-cell font-mono text-xs text-text-secondary">{{ duration(session) }}</td>
+          <td class="td-cell text-center">
+            <div class="flex items-center justify-center gap-1">
+              <button *ngIf="session.status === 'active'" (click)="openLiveReplay(session.id)" title="Canlı İzle" class="action-btn text-accent">
+                <fa-icon [icon]="faLive"></fa-icon>
+              </button>
+              <button *ngIf="session.status !== 'active'" (click)="openReplay(session.id)" title="Tekrar Oynat" class="action-btn text-purple-400">
+                <fa-icon [icon]="faReplay"></fa-icon>
+              </button>
+              <button (click)="showCommands(session.id)" title="Detaylar & Komutlar" class="action-btn text-text-secondary">
+                <fa-icon [icon]="faDetails"></fa-icon>
+              </button>
+              <button *ngIf="session.status === 'active'" (click)="terminate(session)" title="Oturumu Sonlandır" class="action-btn text-danger-500">
+                <fa-icon [icon]="faTerminate"></fa-icon>
+              </button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
+
+  <app-pagination [page]="currentPage" [limit]="limit" [total]="totalRecords"
+                  (pageChange)="loadSessions($event)"></app-pagination>
 </div>
 
-<div *ngIf="isModalOpen" class="fixed inset-0 bg-black bg-opacity-70 z-40 flex justify-center items-start pt-16" (click)="closeModal()">
-  <div class="bg-dark-card rounded-lg shadow-2xl p-8 w-full max-w-4xl relative z-50 animate-fade-in border border-dark-border" (click)="$event.stopPropagation()">
-     <h2 class="text-2xl font-bold mb-4 text-text-main">Oturum Detayları</h2>
-    
+<!-- Detay modalı -->
+<div *ngIf="isModalOpen" class="fixed inset-0 bg-black/70 z-40 flex justify-center items-start pt-16 p-4" (click)="closeModal()">
+  <div class="bg-dark-card rounded-xl shadow-2xl p-8 w-full max-w-4xl relative z-50 animate-fade-in border border-dark-border max-h-[85vh] overflow-y-auto" (click)="$event.stopPropagation()">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Oturum</p>
+        <h2 class="text-xl font-bold text-text-main">
+          #{{ selectedSessionDetails?.session_info?.id }} Detayları
+        </h2>
+      </div>
+      <app-status-badge *ngIf="selectedSessionDetails" [status]="selectedSessionDetails.session_info.status"></app-status-badge>
+    </div>
+
     <div *ngIf="isLoadingDetails" class="text-center p-8">
       <fa-icon [icon]="faSpinner" class="fa-spin text-3xl text-accent"></fa-icon>
       <p class="mt-2 text-text-secondary">Detaylar yükleniyor...</p>
     </div>
-    
+
     <div *ngIf="selectedSessionDetails">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6 p-4 bg-dark-main rounded-lg border border-dark-border">
-          <div><strong class="font-semibold text-text-secondary">ID:</strong> <span class="text-text-main">{{ selectedSessionDetails.session_info.id }}</span></div>
-          <div><strong class="font-semibold text-text-secondary">Durum:</strong> <span class="text-text-main">{{ selectedSessionDetails.session_info.status }}</span></div>
-          <div><strong class="font-semibold text-text-secondary">Kullanıcı:</strong> <span class="text-text-main">{{ selectedSessionDetails.session_info.username }}</span></div>
-          <div><strong class="font-semibold text-text-secondary">Sunucu:</strong> <span class="text-text-main">{{ selectedSessionDetails.session_info.server_hostname }} ({{ selectedSessionDetails.session_info.server_ip }})</span></div>
-          <div><strong class="font-semibold text-text-secondary">Başlangıç:</strong> <span class="text-text-main">{{ selectedSessionDetails.session_info.start_time | date:'medium' }}</span></div>
-          <div><strong class="font-semibold text-text-secondary">Bitiş:</strong> <span class="text-text-main">{{ selectedSessionDetails.session_info.end_time ? (selectedSessionDetails.session_info.end_time | date:'medium') : 'Aktif' }}</span></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mb-6 p-4 bg-dark-main rounded-lg border border-dark-border text-sm">
+        <div><span class="text-text-secondary">Kullanıcı:</span> <span class="text-text-main font-medium ml-1">{{ selectedSessionDetails.session_info.username }}</span></div>
+        <div><span class="text-text-secondary">Sunucu:</span> <span class="text-text-main font-medium ml-1">{{ selectedSessionDetails.session_info.server_hostname }} <span class="font-mono text-xs text-text-secondary">({{ selectedSessionDetails.session_info.server_ip }})</span></span></div>
+        <div><span class="text-text-secondary">Bağlantı:</span> <span class="text-text-main font-mono text-xs ml-1">{{ selectedSessionDetails.session_info.start_time | date:'medium' }}</span></div>
+        <div><span class="text-text-secondary">Bitiş:</span> <span class="text-text-main font-mono text-xs ml-1">{{ selectedSessionDetails.session_info.end_time ? (selectedSessionDetails.session_info.end_time | date:'medium') : 'Aktif' }}</span></div>
+        <div>
+          <span class="text-text-secondary">Erişim Kuralı:</span>
+          <a *ngIf="selectedSessionDetails.session_info.rule_id" routerLink="/rules" class="text-accent hover:text-accent-hover ml-1">#{{ selectedSessionDetails.session_info.rule_id }} →</a>
+          <span *ngIf="!selectedSessionDetails.session_info.rule_id" class="text-text-secondary ml-1">—</span>
         </div>
-        <h3 class="text-xl font-bold mb-4 text-text-secondary">Komut Geçmişi</h3>
-        <div class="max-h-[50vh] overflow-y-auto pr-4 border rounded-lg bg-dark-main border-dark-border">
-          <div *ngIf="selectedSessionDetails.commands.length === 0" class="text-center text-text-secondary py-10">
-            <fa-icon [icon]="faTerminal" class="text-2xl"></fa-icon>
-            <p class="mt-2">Bu oturumda kayıtlı komut bulunamadı.</p>
-          </div>
-          <div *ngFor="let cmd of selectedSessionDetails.commands" class="font-mono text-sm mb-4 last:mb-0 p-4">
-            <div class="flex items-center">
-              <span class="text-green-400">$</span>
-              <span class="ml-2 text-text-main">{{ cmd.command }}</span>
-              <span class="ml-auto text-text-secondary text-xs">{{ cmd.timestamp | date:'shortTime' }}</span>
-            </div>
-            <pre class="mt-2 text-slate-300 whitespace-pre-wrap">{{ cmd.output }}</pre>
-          </div>
+        <div>
+          <span class="text-text-secondary">Sistem Kullanıcısı:</span>
+          <a *ngIf="selectedSessionDetails.session_info.system_user_id" routerLink="/users" class="text-accent hover:text-accent-hover ml-1">{{ selectedSessionDetails.session_info.username }} →</a>
+          <span *ngIf="!selectedSessionDetails.session_info.system_user_id" class="text-text-secondary ml-1">{{ selectedSessionDetails.session_info.username }}</span>
         </div>
+        <div class="md:col-span-2 flex items-center flex-wrap gap-3">
+          <span class="text-text-secondary">SSH Anahtarı:</span>
+          <a *ngIf="selectedSessionDetails.session_info.public_key_id" routerLink="/keys" class="text-accent hover:text-accent-hover">{{ selectedSessionDetails.session_info.public_key_name }} →</a>
+          <span *ngIf="!selectedSessionDetails.session_info.public_key_id" class="text-text-secondary">—</span>
+          <span *ngIf="keyBanStatus?.banned" class="text-xs font-semibold bg-danger-900/50 text-danger-300 px-2 py-1 rounded-full flex items-center gap-1.5">
+            <fa-icon [icon]="faBan"></fa-icon> Yasaklı ({{ keyBanStatus?.ban?.banned_until | date:'short' }})
+          </span>
+          <button *ngIf="selectedSessionDetails.session_info.public_key_id && !keyBanStatus?.banned"
+                  (click)="banSelectedKey()"
+                  class="ml-auto text-xs font-semibold bg-danger-600 hover:bg-danger-700 text-white py-1.5 px-3 rounded-lg transition-colors flex items-center gap-1.5">
+            <fa-icon [icon]="faBan"></fa-icon> Bu Anahtarı Yasakla
+          </button>
+          <button *ngIf="keyBanStatus?.banned"
+                  (click)="unbanSelectedKey()"
+                  class="ml-auto text-xs font-semibold bg-dark-interactive hover:bg-dark-border text-text-main py-1.5 px-3 rounded-lg transition-colors">
+            Yasağı Kaldır
+          </button>
+        </div>
+      </div>
+
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-text-secondary mb-3 flex items-center gap-2">
+        <fa-icon [icon]="faTerminal" class="text-accent"></fa-icon> Komut Geçmişi
+        <span class="font-mono normal-case">({{ selectedSessionDetails.commands.length }})</span>
+      </h3>
+      <div class="max-h-[45vh] overflow-y-auto border rounded-lg bg-dark-main border-dark-border">
+        <div *ngIf="selectedSessionDetails.commands.length === 0" class="text-center text-text-secondary py-10">
+          <fa-icon [icon]="faTerminal" class="text-2xl"></fa-icon>
+          <p class="mt-2">Bu oturumda kayıtlı komut bulunamadı.</p>
+        </div>
+        <div *ngFor="let cmd of selectedSessionDetails.commands" class="font-mono text-sm p-4 border-b border-dark-border/50 last:border-b-0">
+          <div class="flex items-center">
+            <span class="text-success-400">$</span>
+            <span class="ml-2 text-text-main">{{ cmd.command }}</span>
+            <span class="ml-auto text-text-secondary text-xs shrink-0">{{ cmd.timestamp | date:'HH:mm:ss' }}</span>
+          </div>
+          <pre *ngIf="cmd.output" class="mt-2 text-slate-300 whitespace-pre-wrap text-xs">{{ cmd.output }}</pre>
+        </div>
+      </div>
     </div>
-    <div class="mt-8 pt-6 border-t border-dark-border flex justify-end">
-      <button (click)="closeModal()" class="bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg">Kapat</button>
+    <div class="mt-6 pt-5 border-t border-dark-border flex justify-end">
+      <button (click)="closeModal()" class="bg-dark-interactive hover:bg-dark-border text-text-main font-semibold py-2 px-4 rounded-lg transition-colors">Kapat</button>
     </div>
   </div>
 </div>

@@ -1,0 +1,25 @@
+:host {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.terminal-viewer.is-fullscreen {
+  background: #0d1117;
+}
+
+// Terminal "sahnesi": konteyneri dolduran terminal alanı, SOC monitör hissi
+// için hafif bir radyal aydınlatma.
+.terminal-stage {
+  background:
+    radial-gradient(ellipse at center, rgba(47, 129, 247, 0.03), transparent 70%),
+    #0a0d12;
+}
+
+.toolbar-btn {
+  @apply w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:text-text-main hover:bg-dark-interactive transition-colors text-sm;
+}
+
+.toolbar-btn-active {
+  @apply text-accent bg-dark-interactive;
+}

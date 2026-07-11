@@ -1,251 +1,240 @@
-import { Component, OnInit, OnDestroy, ElementRef, ViewChild, NgZone, AfterViewInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, NgZone, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import { ApiClientService, SessionEvent } from '../../core/services/api-client.service';
+import { ApiClientService, SessionEvent, ParsedCommand, SessionDetails } from '../../core/services/api-client.service';
 import { ToastrService } from 'ngx-toastr';
 import { FormsModule } from '@angular/forms';
-import { Subscription } from 'rxjs';
-import { lastValueFrom } from 'rxjs';
+import { Subscription, lastValueFrom } from 'rxjs';
+import { TerminalViewerComponent } from '../../shared/terminal-viewer/terminal-viewer.component';
 
- import { FaIconComponent } from '@fortawesome/angular-fontawesome';
-import { faPlay, faPause, faRedo } from '@fortawesome/free-solid-svg-icons';
+import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import {
+  faListUl, faTerminal, faTriangleExclamation,
+  faChevronLeft, faChevronRight, faRotateLeft, faShieldHalved, faClock
+} from '@fortawesome/free-solid-svg-icons';
 
-interface ReplayEvent extends SessionEvent {
+interface ReplayEvent {
+  data: string;
   timestamp: number;
+}
+
+// Görüntüleme katmanında admin'in gözüne çarpması gereken komutlar. Güvenlik
+// kontrolü değil (bypass edilebilir); hızlı tarama için görsel işaret.
+const RISKY_PATTERNS: RegExp[] = [
+  /\bsudo\b/, /\brm\s+-rf\b|\brm\s+(-\w*\s+)*-\w*r\w*f/, /\bchmod\s+777\b/,
+  /curl[^|]*\|\s*(ba)?sh/, /wget[^|]*\|\s*(ba)?sh/, /\bnc\s+-/, /\bncat\b/,
+  /\bdd\s+if=/, /\biptables\s+-F\b/, /history\s+-c/, /\bbase64\s+-d/,
+  /\/etc\/(passwd|shadow)/, /\bsystemctl\s+(stop|disable)/, /\buseradd\b|\busermod\b/,
+];
+
+export function isRiskyCommand(cmd: string): boolean {
+  return RISKY_PATTERNS.some(p => p.test(cmd));
 }
 
 @Component({
   selector: 'app-replay-session',
   standalone: true,
-   imports: [CommonModule, FormsModule, FaIconComponent],
-  styleUrls: [
-    './replay-session.component.scss',
-    '../../../../node_modules/xterm/css/xterm.css'
-  ],
+  imports: [CommonModule, FormsModule, FaIconComponent, TerminalViewerComponent],
+  styleUrls: ['./replay-session.component.scss'],
   templateUrl: './replay-session.component.html',
 })
-export class ReplaySessionComponent implements OnInit, OnDestroy, AfterViewInit {
-  @ViewChild('terminal', { static: true }) private terminalEl!: ElementRef;
-  private term: Terminal;
-  private fitAddon: FitAddon;
-  private routeSub: Subscription | undefined;
-  // Oturumun kaydedildiği PTY boyutu (backend'den gelir). Tekrar oynatma
-  // terminali, ANSI imleç konumlandırma/scroll-region kodlarının doğru
-  // yorumlanabilmesi için bu boyutla oluşturulmalı; konteynere göre dinamik
-  // "fit" edilirse (kayıt boyutundan farklıysa) ekran birden fazla ekranı
-  // doldurunca imleç sıçraması ve bozuk kaydırma oluşur.
-  private recordedCols = 0;
-  private recordedRows = 0;
+export class ReplaySessionComponent implements OnInit, OnDestroy {
+  @ViewChild(TerminalViewerComponent) private viewer!: TerminalViewerComponent;
 
-   faPlay = faPlay;
-  faPause = faPause;
-  faRedo = faRedo;
-  
+  private routeSub: Subscription | undefined;
+  private viewerReady = false;
+  private events: ReplayEvent[] = [];
+  private pendingRender = false;
+
+  public cols = 0;
+  public rows = 0;
+
+  faListUl = faListUl;
+  faTerminal = faTerminal;
+  faRisky = faTriangleExclamation;
+  faPrev = faChevronLeft;
+  faNext = faChevronRight;
+  faRestart = faRotateLeft;
+  faShield = faShieldHalved;
+  faClock = faClock;
 
   public sessionId: string | null = null;
-  public player = {
-    events: [] as ReplayEvent[],
-    isPlaying: false,
-    isLoaded: false,
-    timeoutId: null as any,
-    currentEventIndex: 0,
-    playbackSpeed: 1,
-    virtualStartTime: 0,
-    sessionDuration: 0,
-    progress: 0,
-    currentTime: '00:00',
-    totalTime: '00:00'
-  };
+  public info: SessionDetails['session_info'] | null = null;
+  public commands: ParsedCommand[] = [];
+  public activeIndex = -1;
+  public isCommandsPanelOpen = true;
+  public isLoaded = false;
+  public riskyCount = 0;
 
   constructor(
     private route: ActivatedRoute,
     private apiClient: ApiClientService,
     private toastr: ToastrService,
     private ngZone: NgZone
-  ) {
-    this.term = new Terminal({
-      cursorBlink: false,
-      convertEol: true,
-      theme: { background: '#000000' },
-      scrollback: 10000,
-    });
-    this.fitAddon = new FitAddon();
-    this.term.loadAddon(this.fitAddon);
-  }
+  ) {}
 
-   
   ngOnInit(): void {
-    this.term.open(this.terminalEl.nativeElement);
     this.routeSub = this.route.params.subscribe(params => {
       this.sessionId = params['id'];
       if (this.sessionId) {
-        this.loadSession();
-      }
-    });
-  }
-
-  ngAfterViewInit(): void {
-    this.fitAddon.fit();
-    window.addEventListener('resize', () => {
-      // Kayıtlı bir PTY boyutu biliniyorsa terminal boyutunu sabit tutuyoruz;
-      // aksi halde (eski kayıtlarda meta veri yoksa) konteynere göre fit ediyoruz.
-      if (!this.recordedCols || !this.recordedRows) {
-        this.fitAddon.fit();
+        this.loadCommands();
+        this.loadEvents();
       }
     });
   }
 
   ngOnDestroy(): void {
-    clearTimeout(this.player.timeoutId);
-    this.term.dispose();
     this.routeSub?.unsubscribe();
   }
 
-  async loadSession(): Promise<void> {
-    if (!this.sessionId) return;
-    this.resetPlayer();
-    this.term.write(`Oturum ID ${this.sessionId} yükleniyor...`);
+  @HostListener('window:keydown', ['$event'])
+  onKeydown(event: KeyboardEvent): void {
+    const target = event.target as HTMLElement;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
+    if (!this.isLoaded) return;
 
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        event.preventDefault();
+        this.step(1);
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        event.preventDefault();
+        this.step(-1);
+        break;
+      case 'Home':
+        event.preventDefault();
+        this.goTo(0);
+        break;
+      case 'End':
+        event.preventDefault();
+        this.goTo(this.commands.length - 1);
+        break;
+    }
+  }
+
+  onViewerReady(): void {
+    this.viewerReady = true;
+    if (this.pendingRender) {
+      this.pendingRender = false;
+      this.renderUpToActive();
+    }
+  }
+
+  isRisky(cmd: ParsedCommand): boolean {
+    return isRiskyCommand(cmd.command);
+  }
+
+  outputPreview(cmd: ParsedCommand): string {
+    const out = (cmd.output || '').replace(/\s+/g, ' ').trim();
+    return out.length > 90 ? out.slice(0, 90) + '…' : out;
+  }
+
+  get activeCommand(): ParsedCommand | null {
+    return this.activeIndex >= 0 && this.activeIndex < this.commands.length ? this.commands[this.activeIndex] : null;
+  }
+
+  private loadCommands(): void {
+    if (!this.sessionId) return;
+    this.apiClient.getSessionDetails(Number(this.sessionId)).subscribe({
+      next: (data) => {
+        this.info = data.session_info;
+        this.commands = data.commands ?? [];
+        this.riskyCount = this.commands.filter(c => this.isRisky(c)).length;
+        this.maybeInitialRender();
+      },
+      error: () => { this.commands = []; }
+    });
+  }
+
+  private async loadEvents(): Promise<void> {
+    if (!this.sessionId) return;
     try {
       const replay = await lastValueFrom(this.apiClient.getSessionReplay(Number(this.sessionId)));
       const rawEvents = replay?.events;
       if (!rawEvents || rawEvents.length === 0) {
-        this.term.write('\r\nBu oturum için kayıtlı terminal çıktısı bulunamadı.');
         this.toastr.info('Bu oturum için kayıtlı terminal çıktısı bulunamadı.');
         return;
       }
-
-      this.recordedCols = replay.cols;
-      this.recordedRows = replay.rows;
-      if (this.recordedCols > 0 && this.recordedRows > 0) {
-        // Terminali, kaydın yapıldığı PTY ile birebir aynı boyuta getir.
-        // Konteyner daha küçükse tarayıcı kaydırma çubuklarıyla gösterilir;
-        // bu, boyut uyuşmazlığından kaynaklanan imleç/kaydırma bozulmalarını önler.
-        this.term.resize(this.recordedCols, this.recordedRows);
-      } else {
-        this.fitAddon.fit();
-      }
-
-      this.player.events = rawEvents
+      this.cols = replay.cols;
+      this.rows = replay.rows;
+      this.events = rawEvents
         .filter(e => e.event_type === 'output')
-        .map(e => ({ ...e, timestamp: new Date(e.event_time).getTime() }));
-
-      if (this.player.events.length === 0) {
-        this.term.write('\r\nBu oturum için kayıtlı terminal çıktısı bulunamadı.');
-        return;
-      }
-
-      this.player.isLoaded = true;
-      this.player.virtualStartTime = this.player.events[0].timestamp;
-      const endTime = this.player.events[this.player.events.length - 1].timestamp;
-      this.player.sessionDuration = endTime - this.player.virtualStartTime;
-      this.player.totalTime = this.formatTime(this.player.sessionDuration / 1000);
-
-      this.term.reset();
-      this.play();
-
+        .map(e => ({ data: e.data, timestamp: new Date(e.event_time).getTime() }));
+      this.isLoaded = this.events.length > 0;
+      this.maybeInitialRender();
     } catch (error: any) {
-      const errorMessage = error.error || error.message || 'Bilinmeyen bir hata oluştu.';
-      this.term.write(`\r\n\x1b[31mHATA: ${errorMessage}\x1b[0m`);
-      this.toastr.error(errorMessage, 'Yükleme Hatası');
+      this.toastr.error(error.error || error.message || 'Yükleme hatası', 'Hata');
     }
   }
 
-  playNextEvent(): void {
-    if (!this.player.isPlaying || this.player.currentEventIndex >= this.player.events.length) {
-      this.pause();
-      return;
+  /** Hem komutlar hem olaylar geldiğinde ilk kareyi (son komut) göster. */
+  private maybeInitialRender(): void {
+    if (!this.isLoaded) return;
+    if (this.activeIndex === -1) {
+      // Baştan başla: admin → ile ilerleyerek oturumu adım adım inceler.
+      this.activeIndex = 0;
+    }
+    this.renderUpToActive();
+  }
+
+  step(direction: 1 | -1): void {
+    if (this.commands.length === 0) return;
+    this.goTo(this.activeIndex + direction);
+  }
+
+  goTo(index: number): void {
+    if (this.commands.length === 0) return;
+    const clamped = Math.max(0, Math.min(this.commands.length - 1, index));
+    this.activeIndex = clamped;
+    this.renderUpToActive();
+    this.scrollActiveIntoView();
+  }
+
+  /**
+   * Terminali sıfırlayıp, seçili komutun ÇIKTISI dahil o ana kadarki tüm
+   * output olaylarını tek seferde basar. Böylece admin komutu + sonucunu
+   * birlikte, anında görür (kare kare inceleme).
+   */
+  private renderUpToActive(): void {
+    if (!this.viewerReady) { this.pendingRender = true; return; }
+    if (!this.isLoaded || this.commands.length === 0) return;
+
+    // Bu komutun çıktısının bittiği an ≈ bir sonraki komutun yazıldığı an.
+    const cutoff = this.activeIndex + 1 < this.commands.length
+      ? new Date(this.commands[this.activeIndex + 1].timestamp).getTime()
+      : Infinity;
+
+    const chunks: string[] = [];
+    for (const ev of this.events) {
+      if (ev.timestamp <= cutoff) chunks.push(ev.data);
+      else break;
     }
 
-    const event = this.player.events[this.player.currentEventIndex];
-    try {
-      const decodedData = atob(event.data);
-      this.term.write(decodedData);
-    } catch (e) { console.warn("Base64 decode hatası:", e); }
-
-    this.ngZone.run(() => {
-      this.updateProgress();
-    });
-    
-    this.player.currentEventIndex++;
-
-    if (this.player.currentEventIndex < this.player.events.length) {
-      const nextEvent = this.player.events[this.player.currentEventIndex];
-      const delay = (nextEvent.timestamp - event.timestamp) / this.player.playbackSpeed;
-      this.player.timeoutId = setTimeout(() => this.playNextEvent(), delay);
-    } else {
-      this.pause();
+    this.viewer.reset();
+    if (chunks.length > 0) {
+      try { this.viewer.writeBase64Batch(chunks); } catch { /* ignore */ }
     }
   }
 
-  play(): void {
-    if (this.player.isPlaying || !this.player.isLoaded) return;
-    this.ngZone.run(() => {
-      this.player.isPlaying = true;
-      this.playNextEvent();
-    });
+  private scrollActiveIntoView(): void {
+    setTimeout(() => {
+      const el = document.querySelector('.cmd-item.active') as HTMLElement | null;
+      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, 0);
   }
 
-  pause(): void {
-    if (!this.player.isPlaying) return;
-    this.ngZone.run(() => {
-      this.player.isPlaying = false;
-      clearTimeout(this.player.timeoutId);
-    });
+  selectCommand(index: number): void {
+    this.goTo(index);
   }
 
-  restart(): void {
-    this.pause();
-    this.term.reset();
-    this.player.currentEventIndex = 0;
-    this.updateProgress();
-    this.play();
-  }
-
-  onProgressChange(event: Event): void {
-    this.pause();
-    const input = event.target as HTMLInputElement;
-    const percentage = parseFloat(input.value);
-    const targetTime = this.player.virtualStartTime + (this.player.sessionDuration * (percentage / 100));
-
-    let newIndex = this.player.events.findIndex(e => e.timestamp >= targetTime);
-    if (newIndex === -1) newIndex = this.player.events.length - 1;
-
-    this.player.currentEventIndex = newIndex;
-
-    this.term.reset();
-    for (let i = 0; i < this.player.currentEventIndex; i++) {
-      try { this.term.write(atob(this.player.events[i].data)); } catch { }
-    }
-    this.updateProgress();
-  }
-
-  resetPlayer(): void {
-    this.ngZone.run(() => {
-      this.pause();
-      this.term.reset();
-      this.player = {
-        ...this.player,
-        events: [], isPlaying: false, isLoaded: false,
-        timeoutId: null, currentEventIndex: 0, progress: 0,
-        currentTime: '00:00', totalTime: '00:00'
-      };
-    });
-  }
-
-  updateProgress(): void {
-    if (!this.player.isLoaded || this.player.events.length === 0) return;
-    const currentEvent = this.player.events[this.player.currentEventIndex] || this.player.events[this.player.events.length - 1];
-    const eventTimeOffset = currentEvent.timestamp - this.player.virtualStartTime;
-    this.player.progress = (eventTimeOffset / this.player.sessionDuration) * 100;
-    this.player.currentTime = this.formatTime(eventTimeOffset / 1000);
-  }
-
-  formatTime(seconds: number): string {
-    const min = Math.floor(seconds / 60);
-    const sec = Math.floor(seconds % 60);
-    return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  reload(): void {
+    this.activeIndex = -1;
+    this.events = [];
+    this.isLoaded = false;
+    this.loadCommands();
+    this.loadEvents();
   }
 }

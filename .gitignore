@@ -5,6 +5,8 @@ certs/
 # Derleme çıktıları
 guardian-agent/agent
 guardian-agent/guardian-agent
+guardian-agent/guardian-agent-new
 guardian-server/guardian-server
+guardian-server/guardian-server-new
 guardian-cli/guardian-cli
 guardian-cli/cli

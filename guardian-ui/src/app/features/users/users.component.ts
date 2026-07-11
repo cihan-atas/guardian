@@ -1,24 +1,31 @@
 // guardian-ui/src/app/features/users/users.component.ts
 
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ApiClientService, User, CreateUserPayload, UpdateUserPayload, NullString } from '../../core/services/api-client.service';
+import { RouterLink } from '@angular/router';
+import { Subject, Subscription, debounceTime } from 'rxjs';
+import { ApiClientService, User, CreateUserPayload, UpdateUserPayload } from '../../core/services/api-client.service';
 import { ToastrService } from 'ngx-toastr';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
-import { faPlus, faUsers } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faUsers, faSync, faMagnifyingGlass, faGavel } from '@fortawesome/free-solid-svg-icons';
+import { PaginationComponent } from '../../shared/ui/pagination/pagination.component';
+import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 @Component({
   selector: 'app-users',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FaIconComponent],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, RouterLink, FaIconComponent, PaginationComponent],
   templateUrl: './users.component.html',
   styleUrl: './users.component.scss'
 })
-export class UsersComponent implements OnInit {
+export class UsersComponent implements OnInit, OnDestroy {
   faPlus = faPlus;
   faUsers = faUsers;
+  faSync = faSync;
+  faSearch = faMagnifyingGlass;
+  faRules = faGavel;
 
   users: User[] = [];
   isLoading = true;
@@ -33,12 +40,16 @@ export class UsersComponent implements OnInit {
   currentPage = 1;
   limit = 8;
   totalRecords = 0;
-  totalPages = 0;
+
+  searchTerm = '';
+  private search$ = new Subject<string>();
+  private searchSub?: Subscription;
 
   constructor(
     private apiClient: ApiClientService,
     private toastr: ToastrService,
-    private fb: FormBuilder
+    private fb: FormBuilder,
+    private confirmDialog: ConfirmDialogService
   ) {
     this.userForm = this.fb.group({
       username: ['', Validators.required],
@@ -47,7 +58,21 @@ export class UsersComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.loadUsers(this.currentPage);
+    this.loadUsers(1);
+    this.searchSub = this.search$.pipe(debounceTime(300)).subscribe(() => this.loadUsers(1));
+  }
+
+  ngOnDestroy(): void {
+    this.searchSub?.unsubscribe();
+  }
+
+  onSearchInput(): void {
+    this.search$.next(this.searchTerm);
+  }
+
+  /** Go'nun sql.NullString şeklini şablona sızdırmadan düz metne çevirir. */
+  desc(user: User): string {
+    return user.description?.Valid ? user.description.String : '';
   }
 
   loadUsers(page: number = 1): void {
@@ -55,14 +80,13 @@ export class UsersComponent implements OnInit {
     this.error = null;
     this.currentPage = page;
 
-    this.apiClient.getUsers(this.currentPage, this.limit).subscribe({
+    this.apiClient.getUsers(this.currentPage, this.limit, this.searchTerm).subscribe({
       next: (response) => {
-        this.users = response.data;
+        this.users = response.data ?? [];
         this.totalRecords = response.total_records;
-        this.totalPages = Math.ceil(this.totalRecords / this.limit) || 1;
         this.isLoading = false;
       },
-      error: (err) => {
+      error: () => {
         this.error = 'Kullanıcı verileri yüklenemedi.';
         this.isLoading = false;
         this.toastr.error(this.error, 'Hata');
@@ -70,31 +94,16 @@ export class UsersComponent implements OnInit {
     });
   }
 
-  nextPage(): void {
-    if (this.currentPage < this.totalPages) {
-      this.loadUsers(this.currentPage + 1);
-    }
-  }
-
-  prevPage(): void {
-    if (this.currentPage > 1) {
-      this.loadUsers(this.currentPage - 1);
-    }
-  }
-
   openModal(userToEdit: User | null = null): void {
     if (userToEdit) {
-      // --- DÜZENLEME MODU ---
       this.isEditMode = true;
       this.editingUser = userToEdit;
-      // DEĞİŞİKLİK: Formu doldururken description'ın içindeki String değerini kullan.
       this.userForm.patchValue({
         username: userToEdit.username,
-        description: userToEdit.description.Valid ? userToEdit.description.String : ''
+        description: this.desc(userToEdit)
       });
       this.userForm.get('username')?.disable();
     } else {
-      // --- OLUŞTURMA MODU ---
       this.isEditMode = false;
       this.editingUser = null;
       this.userForm.reset();
@@ -123,12 +132,12 @@ export class UsersComponent implements OnInit {
   handleCreateUser(): void {
     const formValue = this.userForm.value;
 
-    // DEĞİŞİKLİK: Payload'ı backend'in beklediği NullString formatına çevir.
+    // Backend'in beklediği sql.NullString formatı.
     const payload: CreateUserPayload = {
       username: formValue.username,
       description: {
-        String: formValue.description || '', // Eğer boşsa boş string gönder
-        Valid: !!formValue.description    // Eğer doluysa true, boşsa false gönder
+        String: formValue.description || '',
+        Valid: !!formValue.description
       }
     };
 
@@ -145,7 +154,6 @@ export class UsersComponent implements OnInit {
   handleUpdateUser(): void {
     if (!this.editingUser) return;
 
-    // DEĞİŞİKLİK: Payload'ı backend'in beklediği NullString formatına çevir.
     const payload: UpdateUserPayload = {
       description: {
         String: this.userForm.get('description')?.value || '',
@@ -168,9 +176,16 @@ export class UsersComponent implements OnInit {
     });
   }
 
-  onDeleteUser(userId: number): void {
-    if (!confirm(`Kullanıcı ID ${userId} silinecek, emin misiniz?`)) return;
-    this.apiClient.deleteUser(userId).subscribe({
+  async onDeleteUser(user: User): Promise<void> {
+    const ok = await this.confirmDialog.confirm({
+      title: 'Kullanıcıyı Sil',
+      message: `'${user.username}' sistem kullanıcısı kalıcı olarak silinecek. Bu kullanıcıya bağlı kurallar da etkilenir.`,
+      confirmText: 'Sil',
+      danger: true,
+    });
+    if (!ok) return;
+
+    this.apiClient.deleteUser(user.id).subscribe({
       next: () => {
         this.toastr.success('Kullanıcı başarıyla silindi.');
         if (this.users.length === 1 && this.currentPage > 1) {

@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"guardian.com/server/models"
@@ -191,8 +192,20 @@ func ListSystemUsers(db *sql.DB) http.HandlerFunc {
 		}
 		offset := (page - 1) * limit
 
-		query := "SELECT id, username, description, created_at FROM system_users ORDER BY id ASC LIMIT $1 OFFSET $2"
-		rows, err := db.Query(query, limit, offset)
+		// Opsiyonel arama: kullanıcı adı üzerinde ILIKE.
+		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		where := ""
+		args := []interface{}{}
+		if search != "" {
+			where = " WHERE username ILIKE $1"
+			args = append(args, "%"+search+"%")
+		}
+		query := fmt.Sprintf(
+			"SELECT id, username, description, created_at FROM system_users%s ORDER BY id ASC LIMIT $%d OFFSET $%d",
+			where, len(args)+1, len(args)+2)
+		countArgs := append([]interface{}{}, args...)
+		args = append(args, limit, offset)
+		rows, err := db.Query(query, args...)
 		if err != nil {
 			log.Printf("Veritabanı system_users sorgu hatası: %v", err)
 			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
@@ -217,8 +230,8 @@ func ListSystemUsers(db *sql.DB) http.HandlerFunc {
 		}
 
 		var totalRecords int
-		countQuery := "SELECT COUNT(*) FROM system_users"
-		db.QueryRow(countQuery).Scan(&totalRecords)
+		countQuery := "SELECT COUNT(*) FROM system_users" + where
+		db.QueryRow(countQuery, countArgs...).Scan(&totalRecords)
 
 		response := struct {
 			TotalRecords int                 `json:"total_records"`

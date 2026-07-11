@@ -36,7 +36,7 @@ func GetActiveSessionsList(db *sql.DB) http.HandlerFunc {
 			ServerHostname string    `json:"server_hostname"`
 		}
 
-		var results []ActiveSessionInfo
+		results := []ActiveSessionInfo{}
 		for rows.Next() {
 			var entry ActiveSessionInfo
 			if err := rows.Scan(&entry.ID, &entry.Username, &entry.StartTime, &entry.ServerHostname); err != nil {
@@ -68,7 +68,7 @@ func GetAuditLogStream(db *sql.DB) http.HandlerFunc {
 		}
 		defer rows.Close()
 
-		var results []models.AuditLog
+		results := []models.AuditLog{}
 		for rows.Next() {
 			var entry models.AuditLog
 			if err := rows.Scan(&entry.ID, &entry.AdminRef, &entry.Action, &entry.TargetType, &entry.TargetID, &entry.Status, &entry.ErrorMessage, &entry.CreatedAt); err != nil {

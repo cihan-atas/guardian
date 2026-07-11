@@ -1,116 +1,143 @@
-<div>
-  <h1 class="text-3xl font-bold text-text-main">Gösterge Paneli</h1>
-</div>
-
-<div *ngIf="isLoading" class="text-center text-text-secondary py-20">
+<!-- Yüklenme -->
+<div *ngIf="isLoading" class="text-center text-text-secondary py-24">
   <fa-icon [icon]="faSpinner" class="text-4xl fa-spin text-accent"></fa-icon>
-  <p class="mt-4">İstatistikler yükleniyor...</p>
+  <p class="mt-4 font-mono text-sm tracking-wide">İSTATİSTİKLER YÜKLENİYOR…</p>
 </div>
 
-<div *ngIf="error" class="bg-danger-900 border border-danger-700 text-danger-200 px-4 py-3 rounded mt-8" role="alert">
+<div *ngIf="error" class="bg-danger-900/30 border border-danger-700 text-danger-200 px-4 py-3 rounded-lg" role="alert">
   <strong class="font-bold">Hata!</strong>
   <span class="block sm:inline">{{ error }}</span>
 </div>
 
-<!-- Stat Cards Bölümü -->
-<div *ngIf="!isLoading && !error && stats" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mt-8">
-  
-  <div class="bg-dark-card rounded-lg shadow p-6 flex items-start justify-between border border-dark-border hover:border-accent transition-colors">
+<ng-container *ngIf="!isLoading && !error && stats">
+
+  <!-- Sayfa başlığı -->
+  <header class="flex flex-wrap items-end justify-between gap-4 mb-8">
     <div>
-      <p class="text-sm font-medium text-text-secondary">Aktif Oturumlar</p>
-      <p class="text-4xl font-bold text-text-main mt-1">{{ stats.active_sessions }}</p>
-      <a routerLink="/sessions" class="text-sm font-semibold text-accent hover:text-accent-hover mt-4 inline-block">Detayları Gör →</a>
+      <h1 class="text-2xl font-bold text-text-main tracking-tight">Kontrol Paneli</h1>
+      <p class="text-sm text-text-secondary mt-1 flex items-center gap-2">
+        <span class="font-mono">{{ today | date:'EEEE, d MMMM y' }}</span>
+        <span class="opacity-40">·</span>
+        <span>filonuzun anlık güvenlik özeti</span>
+      </p>
     </div>
-    <div class="bg-blue-900/50 text-blue-400 rounded-full w-12 h-12 flex items-center justify-center">
-      <fa-icon [icon]="faWifi" class="text-xl"></fa-icon>
+
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2.5 bg-dark-card border border-dark-border rounded-full pl-3 pr-4 py-1.5">
+        <span class="relative flex h-2.5 w-2.5 shrink-0">
+          <span *ngIf="stats.active_sessions > 0" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-live opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5" [ngClass]="stats.active_sessions > 0 ? 'bg-live' : 'bg-dark-border'"></span>
+        </span>
+        <span class="text-xs text-text-secondary">
+          <span class="font-mono font-semibold text-text-main tabular-nums">{{ stats.active_sessions }}</span> canlı oturum
+        </span>
+      </div>
+      <button (click)="loadDashboardData()" title="Yenile"
+              class="w-9 h-9 flex items-center justify-center rounded-full bg-dark-card border border-dark-border text-text-secondary hover:text-accent hover:border-accent transition-colors">
+        <fa-icon [icon]="faSync"></fa-icon>
+      </button>
     </div>
+  </header>
+
+  <!-- Birincil metrikler -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+    <a *ngFor="let kpi of primaryKpis" [routerLink]="kpi.link"
+       class="kpi-card group relative bg-dark-card rounded-xl border p-5 flex flex-col transition-colors"
+       [ngClass]="kpi.alert ? 'border-danger-800/60 hover:border-danger-600' : 'border-dark-border hover:border-accent/50'">
+      <div class="flex items-start justify-between">
+        <div class="w-10 h-10 rounded-lg flex items-center justify-center text-lg" [ngClass]="toneIconClass(kpi.tone)">
+          <span class="relative flex items-center justify-center">
+            <span *ngIf="kpi.pulse" class="animate-ping absolute inline-flex h-2 w-2 -top-2 -right-3 rounded-full bg-live opacity-75"></span>
+            <fa-icon [icon]="kpi.icon"></fa-icon>
+          </span>
+        </div>
+        <fa-icon [icon]="faArrowRight" class="text-text-secondary/40 group-hover:text-accent group-hover:translate-x-0.5 transition-all"></fa-icon>
+      </div>
+      <p class="mt-4 font-mono text-3xl font-semibold tabular-nums leading-none"
+         [ngClass]="kpi.alert ? 'text-danger-400' : 'text-text-main'">{{ kpi.value }}</p>
+      <p class="mt-1.5 text-sm font-medium text-text-main">{{ kpi.label }}</p>
+      <p *ngIf="kpi.hint" class="text-xs text-text-secondary mt-0.5 font-mono truncate">{{ kpi.hint }}</p>
+    </a>
   </div>
 
-  <div class="bg-dark-card rounded-lg shadow p-6 flex items-start justify-between border border-dark-border hover:border-accent transition-colors">
-    <div>
-      <p class="text-sm font-medium text-text-secondary">Eskimiş Kurallar</p>
-      <p class="text-4xl font-bold text-text-main mt-1">{{ stats.expired_rules }}</p>
-      <a routerLink="/rules" class="text-sm font-semibold text-accent hover:text-accent-hover mt-4 inline-block">Kuralları Yönet →</a>
-    </div>
-    <div class="bg-yellow-900/50 text-yellow-400 rounded-full w-12 h-12 flex items-center justify-center">
-      <fa-icon [icon]="faCalendarXmark" class="text-xl"></fa-icon>
-    </div>
+  <!-- Envanter şeridi -->
+  <div class="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <a *ngFor="let item of inventory" [routerLink]="item.link"
+       class="group flex items-center gap-3 bg-dark-card rounded-xl border border-dark-border px-4 py-3 hover:border-accent/50 transition-colors">
+      <div class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" [ngClass]="toneIconClass(item.tone)">
+        <fa-icon [icon]="item.icon"></fa-icon>
+      </div>
+      <div class="min-w-0">
+        <p class="font-mono text-xl font-semibold text-text-main tabular-nums leading-none">{{ item.value }}</p>
+        <p class="text-xs text-text-secondary mt-1 truncate group-hover:text-text-main transition-colors">{{ item.label }}</p>
+      </div>
+    </a>
   </div>
 
-  <div class="bg-dark-card rounded-lg shadow p-6 flex items-start justify-between border border-dark-border hover:border-accent transition-colors">
-    <div>
-      <p class="text-sm font-medium text-text-secondary">Toplam Sunucu</p>
-      <p class="text-4xl font-bold text-text-main mt-1">{{ stats.total_servers }}</p>
-      <a routerLink="/servers" class="text-sm font-semibold text-accent hover:text-accent-hover mt-4 inline-block">Sunucuları Yönet →</a>
+  <!-- Operasyonel paneller: erişim pencereleri + son oturumlar -->
+  <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+    <div class="bg-dark-card rounded-xl border border-dark-border p-6">
+      <div class="flex justify-between items-center mb-5">
+        <div>
+          <p class="chart-kicker">JIT</p>
+          <h3 class="text-base font-semibold text-text-main flex items-center gap-2"><fa-icon [icon]="faHourglass" class="text-accent"></fa-icon> Aktif Erişim Pencereleri</h3>
+        </div>
+        <a routerLink="/rules" class="text-sm font-semibold text-accent hover:text-accent-hover">Kurallar →</a>
+      </div>
+      <ul class="space-y-4">
+        <li *ngIf="accessWindows.length === 0" class="py-8 text-center text-text-secondary text-sm">Şu an aktif erişim penceresi yok.</li>
+        <li *ngFor="let r of accessWindows">
+          <div class="flex items-center justify-between text-sm mb-1.5 gap-2">
+            <span class="font-medium text-text-main truncate">{{ r.username }}<span class="text-text-secondary">@</span>{{ r.server_hostname }}</span>
+            <span class="font-mono text-xs shrink-0 flex items-center gap-1" [ngClass]="isExpiringSoon(r) ? 'text-danger-400' : 'text-text-secondary'">
+              <fa-icon [icon]="faClock"></fa-icon> {{ formatRemaining(windowRemainingMs(r)) }}
+            </span>
+          </div>
+          <div class="h-1.5 rounded-full bg-dark-interactive overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-500" [ngClass]="isExpiringSoon(r) ? 'bg-danger-500' : 'bg-accent'" [style.width.%]="windowPercent(r)"></div>
+          </div>
+          <p class="text-[11px] font-mono text-text-secondary/70 mt-1 truncate flex items-center gap-1">
+            <fa-icon [icon]="faKeys"></fa-icon> {{ r.key_name }}
+            <span class="opacity-40">·</span> {{ r.valid_until | date:'dd.MM HH:mm' }}'e kadar
+          </p>
+        </li>
+      </ul>
     </div>
-    <div class="bg-green-900/50 text-green-400 rounded-full w-12 h-12 flex items-center justify-center">
-      <fa-icon [icon]="faServer" class="text-xl"></fa-icon>
+
+    <div class="bg-dark-card rounded-xl border border-dark-border p-6">
+      <div class="flex justify-between items-center mb-5">
+        <div>
+          <p class="chart-kicker">Geçmiş</p>
+          <h3 class="text-base font-semibold text-text-main flex items-center gap-2"><fa-icon [icon]="faHistory" class="text-accent"></fa-icon> Son Oturumlar</h3>
+        </div>
+        <a routerLink="/sessions" class="text-sm font-semibold text-accent hover:text-accent-hover">Tümü →</a>
+      </div>
+      <ul class="divide-y divide-dark-border">
+        <li *ngIf="recentSessions.length === 0" class="py-8 text-center text-text-secondary text-sm">Kayıtlı oturum yok.</li>
+        <li *ngFor="let s of recentSessions" class="py-2.5 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-sm text-text-main truncate">{{ s.username }}<span class="text-text-secondary">@</span>{{ s.server_hostname }}</p>
+            <p class="text-[11px] font-mono text-text-secondary mt-0.5">{{ s.start_time | date:'dd.MM HH:mm' }} <span class="opacity-40">·</span> {{ sessionDuration(s) }}</p>
+          </div>
+          <span class="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0" [ngClass]="sessionBadgeClass(s.status)">{{ statusLabel(s.status) }}</span>
+        </li>
+      </ul>
     </div>
+
   </div>
 
-  <div class="bg-dark-card rounded-lg shadow p-6 flex items-start justify-between border border-dark-border hover:border-accent transition-colors">
-    <div>
-      <p class="text-sm font-medium text-text-secondary">Tanımlı Kullanıcılar</p>
-      <p class="text-4xl font-bold text-text-main mt-1">{{ stats.total_users }}</p>
-      <a routerLink="/users" class="text-sm font-semibold text-accent hover:text-accent-hover mt-4 inline-block">Kullanıcıları Yönet →</a>
+  <!-- Aktivite (hero grafik) -->
+  <div #lineChartCard class="chart-card mt-6 ngx-charts-dark">
+    <div class="chart-head">
+      <div>
+        <p class="chart-kicker">Aktivite</p>
+        <h3 class="chart-title"><fa-icon [icon]="faChartLine" class="text-accent text-sm"></fa-icon> Son 7 Gündeki Oturum Aktivitesi</h3>
+      </div>
     </div>
-    <div class="bg-purple-900/50 text-purple-400 rounded-full w-12 h-12 flex items-center justify-center">
-      <fa-icon [icon]="faUsers" class="text-xl"></fa-icon>
-    </div>
-  </div>
-
-  <div class="bg-dark-card rounded-lg shadow p-6 flex items-start justify-between border border-dark-border hover:border-accent transition-colors">
-    <div>
-      <p class="text-sm font-medium text-text-secondary">Bekleyen Kurallar</p>
-      <p class="text-4xl font-bold text-text-main mt-1">{{ stats.pending_rules }}</p>
-      <a routerLink="/rules" class="text-sm font-semibold text-accent hover:text-accent-hover mt-4 inline-block">Kuralları Yönet →</a>
-    </div>
-    <div class="bg-blue-900/50 text-blue-400 rounded-full w-12 h-12 flex items-center justify-center">
-      <fa-icon [icon]="faPending" class="text-xl"></fa-icon>
-    </div>
-  </div>
-
-  <div class="bg-dark-card rounded-lg shadow p-6 flex items-start justify-between border border-dark-border hover:border-accent transition-colors">
-    <div>
-      <p class="text-sm font-medium text-text-secondary">Tanımlı Anahtarlar</p>
-      <p class="text-4xl font-bold text-text-main mt-1">{{ stats.total_keys }}</p>
-      <a routerLink="/keys" class="text-sm font-semibold text-accent hover:text-accent-hover mt-4 inline-block">Anahtarları Yönet →</a>
-    </div>
-    <div class="bg-indigo-900/50 text-indigo-400 rounded-full w-12 h-12 flex items-center justify-center">
-      <fa-icon [icon]="faKeys" class="text-xl"></fa-icon>
-    </div>
-  </div>
-
-  <div class="bg-dark-card rounded-lg shadow p-6 flex items-start justify-between border border-dark-border hover:border-accent transition-colors">
-    <div>
-      <p class="text-sm font-medium text-text-secondary">Bugünkü Oturum Sayısı</p>
-      <p class="text-4xl font-bold text-text-main mt-1">{{ stats.today_sessions }}</p>
-      <a routerLink="/sessions" class="text-sm font-semibold text-accent hover:text-accent-hover mt-4 inline-block">Tüm Oturumlar →</a>
-    </div>
-    <div class="bg-pink-900/50 text-pink-400 rounded-full w-12 h-12 flex items-center justify-center">
-      <fa-icon [icon]="faToday" class="text-xl"></fa-icon>
-    </div>
-  </div>
-
-  <div class="bg-dark-card rounded-lg shadow p-6 flex items-start justify-between border border-dark-border hover:border-accent transition-colors">
-    <div>
-      <p class="text-sm font-medium text-text-secondary">Hatalı Oturumlar</p>
-      <p class="text-4xl font-bold text-text-main mt-1">{{ stats.failed_sessions }}</p>
-      <a routerLink="/sessions" class="text-sm font-semibold text-accent hover:text-accent-hover mt-4 inline-block">Oturumları İncele →</a>
-    </div>
-    <div class="bg-red-900/50 text-red-400 rounded-full w-12 h-12 flex items-center justify-center">
-      <fa-icon [icon]="faFailed" class="text-xl"></fa-icon>
-    </div>
-  </div>
-
-</div>
-
-<div *ngIf="!isLoading && !error" class="mt-8 grid grid-cols-1 xl:grid-cols-2 gap-6">
-
-  <div class="bg-dark-card rounded-lg shadow p-6 border border-dark-border ngx-charts-dark">
-    <h3 class="text-lg font-semibold text-text-main mb-4">Son 7 Gündeki Oturum Aktivitesi</h3>
     <ngx-charts-line-chart
-      [view]="view"
+      *ngIf="views.line[0] > 0"
+      [view]="views.line"
       [results]="sessionActivity"
       [scheme]="colorScheme"
       [gradient]="gradient"
@@ -120,64 +147,200 @@
       [showXAxisLabel]="showXAxisLabel"
       [showYAxisLabel]="showYAxisLabel"
       [xAxisLabel]="xAxisLabel"
-      [yAxisLabel]="yAxisLabel">
+      [yAxisLabel]="yAxisLabel"
+      [roundDomains]="true">
     </ngx-charts-line-chart>
   </div>
 
+  <!-- Dağılımlar -->
+  <div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div #topServersCard class="chart-card items-center ngx-charts-dark">
+      <div class="chart-head w-full"><div>
+        <p class="chart-kicker">Dağılım</p>
+        <h3 class="chart-title">Sunuculara Göre Oturumlar</h3>
+      </div></div>
+      <ngx-charts-pie-chart
+        *ngIf="views.topServers[0] > 0 && topServers.length > 0"
+        [view]="views.topServers" [results]="topServers" [scheme]="colorScheme"
+        [gradient]="pieGradient" [labels]="showPieLabels" [doughnut]="isDoughnut"
+        [legend]="true" [legendPosition]="legendPosition">
+      </ngx-charts-pie-chart>
+      <p *ngIf="topServers.length === 0" class="empty-note">Henüz veri yok.</p>
+    </div>
 
-  <div class="bg-dark-card rounded-lg shadow p-6 flex flex-col items-center border border-dark-border ngx-charts-dark">
-    <h3 class="text-lg font-semibold text-text-main mb-4">Oturumların Sunuculara Göre Dağılımı (Top 5)</h3>
-    <ngx-charts-pie-chart
-      [view]="[500, 250]"
-      [results]="topServers"
-      [scheme]="colorScheme"
-      [gradient]="pieGradient"
-      [labels]="showPieLabels"
-      [doughnut]="isDoughnut"
-      [legend]="true"
-      [legendPosition]="legendPosition">
-    </ngx-charts-pie-chart>
+    <div #sessionStatusCard class="chart-card items-center ngx-charts-dark">
+      <div class="chart-head w-full"><div>
+        <p class="chart-kicker">Dağılım</p>
+        <h3 class="chart-title">Oturum Durumu</h3>
+      </div></div>
+      <ngx-charts-pie-chart
+        *ngIf="views.sessionStatus[0] > 0 && sessionStatusBreakdown.length > 0"
+        [view]="views.sessionStatus" [results]="sessionStatusBreakdown" [scheme]="colorScheme"
+        [gradient]="pieGradient" [labels]="showPieLabels" [doughnut]="isDoughnut"
+        [legend]="true" [legendPosition]="legendPosition">
+      </ngx-charts-pie-chart>
+      <p *ngIf="sessionStatusBreakdown.length === 0" class="empty-note">Henüz veri yok.</p>
+    </div>
+
+    <div #ruleStatusCard class="chart-card items-center ngx-charts-dark">
+      <div class="chart-head w-full"><div>
+        <p class="chart-kicker">Dağılım</p>
+        <h3 class="chart-title">Erişim Kuralı Durumu</h3>
+      </div></div>
+      <ngx-charts-pie-chart
+        *ngIf="views.ruleStatus[0] > 0 && ruleStatusBreakdown.length > 0"
+        [view]="views.ruleStatus" [results]="ruleStatusBreakdown" [scheme]="colorScheme"
+        [gradient]="pieGradient" [labels]="showPieLabels" [doughnut]="isDoughnut"
+        [legend]="true" [legendPosition]="legendPosition">
+      </ngx-charts-pie-chart>
+      <p *ngIf="ruleStatusBreakdown.length === 0" class="empty-note">Henüz veri yok.</p>
+    </div>
   </div>
 
-</div>
-
-<div *ngIf="!isLoading && !error" class="mt-8 grid grid-cols-1 xl:grid-cols-2 gap-6">
-
-  <div class="bg-dark-card rounded-lg shadow p-6 border border-dark-border">
-    <div class="flex justify-between items-center mb-4">
-      <h3 class="text-lg font-semibold text-text-main">🟢 Son Aktif Oturumlar</h3>
-      <a routerLink="/sessions" class="text-sm font-semibold text-accent hover:text-accent-hover">Tümünü Gör →</a>
-    </div>
-    <ul class="divide-y divide-dark-border">
-      <li *ngIf="activeSessions.length === 0" class="py-3 text-center text-text-secondary">Aktif oturum bulunamadı.</li>
-      <li *ngFor="let session of activeSessions" class="py-3 flex justify-between items-center">
-        <div>
-          <p class="text-sm font-medium text-text-main">{{ session.username }} @ {{ session.server_hostname }}</p>
-          <p class="text-sm text-text-secondary">{{ session.start_time | date:'shortTime' }}'den beri aktif</p>
+  <!-- Komut analitiği: tam komut + sunucu filtresi + drill-down -->
+  <div class="mt-6 bg-dark-card rounded-xl border border-dark-border p-6">
+    <div class="flex flex-wrap items-start justify-between gap-4 mb-5">
+      <div>
+        <p class="chart-kicker">Kullanım</p>
+        <h3 class="text-base font-semibold text-text-main flex items-center gap-2"><fa-icon [icon]="faTerminal" class="text-accent text-sm"></fa-icon> Komut Analitiği</h3>
+        <p class="chart-sub">Son 200 oturum · tam komut satırları, baz komuta göre gruplu — satıra tıklayıp varyantları açın</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- Sunucu filtresi -->
+        <div class="relative flex items-center">
+          <fa-icon [icon]="faFilter" class="absolute left-3 text-text-secondary text-xs pointer-events-none"></fa-icon>
+          <select [ngModel]="selectedCmdServer" (ngModelChange)="onCmdServerChange($event)"
+                  class="appearance-none bg-dark-main border border-dark-border rounded-lg pl-8 pr-8 py-2 text-sm text-text-main focus:outline-none focus:border-accent cursor-pointer">
+            <option value="">Tüm sunucular</option>
+            <option *ngFor="let h of commandServers" [value]="h">{{ h }}</option>
+          </select>
         </div>
-        <button (click)="openLiveReplay(session.id)" title="Canlı İzle" class="w-8 h-8 flex items-center justify-center text-accent hover:text-accent-hover transition-colors rounded-full hover:bg-dark-interactive">
-          <fa-icon [icon]="faLive"></fa-icon>
-        </button>
-      </li>
-    </ul>
-  </div>
-
-  <div class="bg-dark-card rounded-lg shadow p-6 border border-dark-border">
-    <div class="flex justify-between items-center mb-4">
-      <h3 class="text-lg font-semibold text-text-main">🧾 Son Yönetici Eylemleri</h3>
-      <a routerLink="/audit-logs" class="text-sm font-semibold text-accent hover:text-accent-hover">Tümünü Gör →</a>
+        <!-- Arama -->
+        <div class="relative flex items-center">
+          <fa-icon [icon]="faSearch" class="absolute left-3 text-text-secondary text-xs pointer-events-none"></fa-icon>
+          <input type="text" [(ngModel)]="commandSearch" (input)="onCommandSearch()"
+                 placeholder="komut ara…"
+                 class="bg-dark-main border border-dark-border rounded-lg pl-8 pr-3 py-2 text-sm text-text-main w-44 focus:outline-none focus:border-accent">
+        </div>
+      </div>
     </div>
-    <ul class="divide-y divide-dark-border">
-       <li *ngIf="auditLogs.length === 0" class="py-3 text-center text-text-secondary">Denetim kaydı bulunamadı.</li>
-      <li *ngFor="let log of auditLogs" class="py-3">
-        <p class="text-sm text-text-main">
-          <span class="font-bold">{{ log.admin_ref }}</span>: 
-          '{{ log.target_type }}' {{ log.target_id }} için '{{ log.action }}' eylemini gerçekleştirdi.
-          <span [ngClass]="{'text-success-400': log.status === 'SUCCESS', 'text-danger-400': log.status !== 'SUCCESS'}">({{ log.status }})</span>
-        </p>
-        <p class="text-sm text-text-secondary">{{ log.created_at | date:'medium' }}</p>
+
+    <!-- Özet şerit -->
+    <div class="flex items-center gap-6 text-xs text-text-secondary font-mono mb-4 pb-4 border-b border-dark-border">
+      <span><span class="text-text-main font-semibold">{{ commandGroups.length }}</span> benzersiz komut</span>
+      <span><span class="text-text-main font-semibold">{{ totalCommandRuns }}</span> toplam çalıştırma</span>
+      <span *ngIf="selectedCmdServer" class="text-accent">sunucu: {{ selectedCmdServer }}</span>
+    </div>
+
+    <p *ngIf="commandGroups.length === 0" class="empty-note">Bu filtreyle eşleşen komut yok.</p>
+
+    <ul class="space-y-1.5">
+      <li *ngFor="let g of commandGroups" class="rounded-lg overflow-hidden">
+        <!-- Baz komut satırı -->
+        <button (click)="toggleBase(g.base)"
+                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-dark-interactive transition-colors text-left group"
+                [ngClass]="{ 'bg-dark-interactive/50': isExpanded(g.base) }">
+          <fa-icon [icon]="faChevronRight" class="text-text-secondary text-xs transition-transform shrink-0"
+                   [class.rotate-90]="isExpanded(g.base)"></fa-icon>
+          <fa-icon *ngIf="g.risky" [icon]="faWarn" class="text-danger-400 text-xs shrink-0" title="Riskli komut"></fa-icon>
+          <span class="font-mono text-sm shrink-0 w-32 truncate" [ngClass]="g.risky ? 'text-danger-300' : 'text-text-main'">{{ g.base }}</span>
+          <div class="flex-grow h-2 rounded-full bg-dark-main overflow-hidden">
+            <div class="h-full rounded-full" [ngClass]="g.risky ? 'bg-danger-500/70' : 'bg-accent/70'" [style.width.%]="cmdBarPercent(g.count)"></div>
+          </div>
+          <span class="font-mono text-sm text-text-secondary tabular-nums shrink-0 w-12 text-right">{{ g.count }}</span>
+          <span class="text-[10px] text-text-secondary/60 shrink-0 w-16 text-right">{{ g.variants.length }} varyant</span>
+        </button>
+
+        <!-- Varyantlar (drill-down) -->
+        <div *ngIf="isExpanded(g.base)" class="pl-9 pr-3 pb-2 pt-1 space-y-1">
+          <div *ngFor="let v of g.variants" class="flex items-center gap-3 px-3 py-1.5 rounded bg-dark-main/50">
+            <fa-icon *ngIf="v.risky" [icon]="faWarn" class="text-danger-400 text-[10px] shrink-0"></fa-icon>
+            <code class="text-xs font-mono flex-grow truncate" [ngClass]="v.risky ? 'text-danger-300' : 'text-text-main'">{{ v.command }}</code>
+            <span *ngFor="let h of v.servers" class="text-[10px] font-mono bg-dark-interactive text-text-secondary px-1.5 py-0.5 rounded shrink-0">{{ h }}</span>
+            <span class="font-mono text-xs text-text-secondary tabular-nums shrink-0 w-10 text-right">{{ v.count }}×</span>
+          </div>
+        </div>
       </li>
     </ul>
   </div>
 
-</div>
+  <!-- Kullanım grafikleri -->
+  <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+    <div #userActivityCard class="chart-card ngx-charts-dark">
+      <div class="chart-head"><div>
+        <p class="chart-kicker">Kullanım</p>
+        <h3 class="chart-title"><fa-icon [icon]="faUsers" class="text-accent text-sm"></fa-icon> En Aktif Kullanıcı · Sunucu</h3>
+        <p class="chart-sub">Kim, hangi sunucuda en çok oturum açtı</p>
+      </div></div>
+      <ngx-charts-bar-horizontal
+        *ngIf="views.userActivity[0] > 0 && userActivity.length > 0"
+        [view]="views.userActivity" [results]="userActivity" [scheme]="colorScheme"
+        [xAxis]="true" [yAxis]="true" [roundDomains]="true">
+      </ngx-charts-bar-horizontal>
+      <p *ngIf="userActivity.length === 0" class="empty-note">Henüz veri yok.</p>
+    </div>
+
+    <div #hourlyActivityCard class="chart-card ngx-charts-dark">
+      <div class="chart-head"><div>
+        <p class="chart-kicker">Kullanım</p>
+        <h3 class="chart-title"><fa-icon [icon]="faBolt" class="text-accent text-sm"></fa-icon> Günün Saatine Göre Oturum Yoğunluğu</h3>
+        <p class="chart-sub">Tüm zamanların toplamı — hangi saatlerde daha çok bağlanılıyor</p>
+      </div></div>
+      <ngx-charts-bar-vertical
+        *ngIf="views.hourlyActivity[0] > 0"
+        [view]="views.hourlyActivity" [results]="hourlyActivity" [scheme]="colorScheme"
+        [xAxis]="true" [yAxis]="true" [roundDomains]="true">
+      </ngx-charts-bar-vertical>
+    </div>
+  </div>
+
+  <!-- Canlı oturumlar + denetim kaydı -->
+  <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+    <div class="bg-dark-card rounded-xl border border-dark-border p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-base font-semibold text-text-main flex items-center gap-2"><fa-icon [icon]="faLive" class="text-live"></fa-icon> Aktif Oturumlar</h3>
+        <a routerLink="/sessions" class="text-sm font-semibold text-accent hover:text-accent-hover">Tümünü Gör →</a>
+      </div>
+      <ul class="divide-y divide-dark-border">
+        <li *ngIf="activeSessions.length === 0" class="py-8 text-center text-text-secondary text-sm">Şu an aktif oturum yok.</li>
+        <li *ngFor="let session of activeSessions" class="py-3 flex justify-between items-center group">
+          <div class="flex items-center gap-3">
+            <span class="relative flex h-2 w-2 shrink-0">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-live opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-live"></span>
+            </span>
+            <div>
+              <p class="text-sm font-medium text-text-main">{{ session.username }} <span class="text-text-secondary">@</span> {{ session.server_hostname }}</p>
+              <p class="text-xs font-mono text-text-secondary mt-0.5">{{ session.start_time | date:'shortTime' }}'den beri</p>
+            </div>
+          </div>
+          <button (click)="openLiveReplay(session.id)" title="Canlı İzle"
+                  class="w-8 h-8 flex items-center justify-center text-accent hover:text-white hover:bg-accent transition-colors rounded-full">
+            <fa-icon [icon]="faLive"></fa-icon>
+          </button>
+        </li>
+      </ul>
+    </div>
+
+    <div class="bg-dark-card rounded-xl border border-dark-border p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-base font-semibold text-text-main flex items-center gap-2"><fa-icon [icon]="faAudit" class="text-accent"></fa-icon> Son Yönetici Eylemleri</h3>
+      </div>
+      <ul class="divide-y divide-dark-border">
+        <li *ngIf="auditLogs.length === 0" class="py-8 text-center text-text-secondary text-sm">Denetim kaydı bulunamadı.</li>
+        <li *ngFor="let log of auditLogs" class="py-3 flex items-start gap-3">
+          <span class="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" [ngClass]="log.status === 'SUCCESS' ? 'bg-success-500' : 'bg-danger-500'"></span>
+          <div class="min-w-0">
+            <p class="text-sm text-text-main">
+              <span class="font-semibold">{{ log.admin_ref }}</span>
+              <span class="text-text-secondary"> · {{ log.target_type }}#{{ log.target_id }} → </span>
+              <span class="font-mono text-xs">{{ log.action }}</span>
+            </p>
+            <p class="text-xs font-mono text-text-secondary mt-0.5">{{ log.created_at | date:'medium' }}</p>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+</ng-container>

@@ -9,8 +9,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/lib/pq"
 	"guardian.com/server/agentclient"
 	"guardian.com/server/models"
 	"guardian.com/server/services"
@@ -28,17 +30,39 @@ func ListSessions(db *sql.DB) http.HandlerFunc {
 		}
 		offset := (page - 1) * limit
 
-		query := `
-			SELECT 
+		// Opsiyonel filtreler: ?search= (kullanıcı/sunucu adı, ILIKE) ve
+		// ?status= (virgülle ayrılmış durum listesi, örn. "ended,timed_out").
+		var conds []string
+		args := []interface{}{}
+		if search := strings.TrimSpace(r.URL.Query().Get("search")); search != "" {
+			args = append(args, "%"+search+"%")
+			conds = append(conds, fmt.Sprintf("(s.username ILIKE $%d OR sv.hostname ILIKE $%d)", len(args), len(args)))
+		}
+		if statusParam := strings.TrimSpace(r.URL.Query().Get("status")); statusParam != "" {
+			statuses := strings.Split(statusParam, ",")
+			for i := range statuses {
+				statuses[i] = strings.TrimSpace(statuses[i])
+			}
+			args = append(args, pq.Array(statuses))
+			conds = append(conds, fmt.Sprintf("s.status = ANY($%d)", len(args)))
+		}
+		where := ""
+		if len(conds) > 0 {
+			where = " WHERE " + strings.Join(conds, " AND ")
+		}
+
+		query := fmt.Sprintf(`
+			SELECT
 				s.id, s.rule_id, s.server_id, s.username, s.start_time, s.end_time, s.status,
 				sv.hostname AS server_hostname,
 				sv.ip_address AS server_ip
 			FROM sessions s
 			JOIN servers sv ON s.server_id = sv.id
-			ORDER BY s.id DESC 
-			LIMIT $1 OFFSET $2`
-
-		rows, err := db.Query(query, limit, offset)
+			%s ORDER BY s.id DESC
+			LIMIT $%d OFFSET $%d`, where, len(args)+1, len(args)+2)
+		countArgs := append([]interface{}{}, args...)
+		args = append(args, limit, offset)
+		rows, err := db.Query(query, args...)
 		if err != nil {
 			log.Printf("Veritabanı zenginleştirilmiş oturum listeleme hatası: %v", err)
 			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
@@ -66,8 +90,8 @@ func ListSessions(db *sql.DB) http.HandlerFunc {
 		}
 
 		var totalRecords int
-		countQuery := "SELECT COUNT(*) FROM sessions"
-		db.QueryRow(countQuery).Scan(&totalRecords)
+		countQuery := "SELECT COUNT(*) FROM sessions s JOIN servers sv ON s.server_id = sv.id" + where
+		db.QueryRow(countQuery, countArgs...).Scan(&totalRecords)
 
 		response := struct {
 			TotalRecords int                        `json:"total_records"`
