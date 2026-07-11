@@ -51,6 +51,11 @@ func runChecks(db *sql.DB, agentClient agentclient.AgentCommunicator) {
 		log.Printf("[ERROR] Zombi oturumlar temizlenirken hata oluştu: %v", err)
 	}
 
+	// Süresi dolmuş yönetici oturum token'larını temizle (best-effort).
+	if err := services.PurgeExpiredSessions(db); err != nil {
+		log.Printf("[WARN] Süresi dolmuş oturumlar temizlenemedi: %v", err)
+	}
+
 	log.Println("✅ Kural kontrolü tamamlandı.")
 }
 

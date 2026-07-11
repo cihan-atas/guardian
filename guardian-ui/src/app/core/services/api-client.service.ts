@@ -1,6 +1,6 @@
 // guardian-ui/src/app/core/services/api-client.service.ts
 
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -249,6 +249,77 @@ export interface AuditLog {
   created_at: string;
 }
 
+export type Role = 'viewer' | 'operator' | 'admin';
+
+/** Giriş yanıtı / oturum kimliği. */
+export interface LoginResponse {
+  token: string;
+  username: string;
+  role: Role;
+  display_name: string;
+}
+
+export interface AuthIdentity {
+  id?: number;
+  username: string;
+  role: Role;
+  display_name: string;
+}
+
+/** Yönetici hesabı (RBAC). */
+export interface AdminUser {
+  id: number;
+  username: string;
+  role: Role;
+  display_name: string;
+  disabled: boolean;
+  created_at: string;
+  last_login?: string;
+}
+
+export interface CreateAdminPayload {
+  username: string;
+  password: string;
+  role: Role;
+  display_name: string;
+}
+
+export interface UpdateAdminPayload {
+  role?: Role;
+  display_name?: string;
+  disabled?: boolean;
+  password?: string;
+}
+
+/** Erişim talebi (onay akışı). */
+export interface AccessRequest {
+  id: number;
+  server_id: number;
+  public_key_id: number;
+  system_user_id: number;
+  valid_from: string;
+  valid_until: string;
+  status: string;
+  created_at: string;
+  server_hostname: string;
+  username: string;
+  key_name: string;
+  request_reason: string;
+  reject_reason?: string;
+  requested_by?: string;
+  approved_by?: string;
+  decided_at?: string;
+}
+
+export interface CreateAccessRequestPayload {
+  server_id: number;
+  public_key_id: number;
+  system_user_id: number;
+  valid_from: string;
+  valid_until: string;
+  reason: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -265,10 +336,52 @@ export class ApiClientService {
     return params;
   }
 
-    checkAuth(token: string): Observable<any> {
-     const headers = new HttpHeaders({ 'Authorization': `Bearer ${token}` });
-     return this.http.get(`${this.apiUrl}/auth/check`, { headers });
-   }
+  login(username: string, password: string): Observable<LoginResponse> {
+    return this.http.post<LoginResponse>(`${this.apiUrl}/auth/login`, { username, password });
+  }
+
+  logout(): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/auth/logout`, {});
+  }
+
+  getMe(): Observable<AuthIdentity> {
+    return this.http.get<AuthIdentity>(`${this.apiUrl}/auth/me`);
+  }
+
+  changePassword(currentPassword: string, newPassword: string): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/auth/change-password`, {
+      current_password: currentPassword, new_password: newPassword,
+    });
+  }
+
+  // --- Yönetici hesapları (RBAC) ---
+  getAdminUsers(): Observable<AdminUser[]> {
+    return this.http.get<AdminUser[]>(`${this.apiUrl}/admin-users`);
+  }
+  createAdminUser(payload: CreateAdminPayload): Observable<AdminUser> {
+    return this.http.post<AdminUser>(`${this.apiUrl}/admin-users`, payload);
+  }
+  updateAdminUser(id: number, payload: UpdateAdminPayload): Observable<void> {
+    return this.http.patch<void>(`${this.apiUrl}/admin-users/${id}`, payload);
+  }
+  deleteAdminUser(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/admin-users/${id}`);
+  }
+
+  // --- Erişim talepleri (onay akışı) ---
+  getAccessRequests(status?: string): Observable<AccessRequest[]> {
+    const q = status?.trim() ? `?status=${encodeURIComponent(status.trim())}` : '';
+    return this.http.get<AccessRequest[]>(`${this.apiUrl}/access-requests${q}`);
+  }
+  createAccessRequest(payload: CreateAccessRequestPayload): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.apiUrl}/access-requests`, payload);
+  }
+  approveAccessRequest(id: number): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/access-requests/${id}/approve`, {});
+  }
+  rejectAccessRequest(id: number, reason?: string): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/access-requests/${id}/reject`, { reason });
+  }
 
       getServers(page: number = 1, limit: number = 20, search?: string): Observable<PaginatedResponse<Server>> {
     return this.http.get<PaginatedResponse<Server>>(`${this.apiUrl}/servers?${this.listParams(page, limit, search)}`);

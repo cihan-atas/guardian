@@ -6,10 +6,6 @@ import (
 	"net/http"
 )
 
-type adminTokenKey string
-
-const AdminTokenContextKey = adminTokenKey("adminToken")
-
 type AuditAction string
 
 const (
@@ -30,6 +26,14 @@ const (
 	ActionTerminateSess AuditAction = "TERMINATE_SESSION"
 	ActionBanKey        AuditAction = "BAN_KEY"
 	ActionUnbanKey      AuditAction = "UNBAN_KEY"
+	ActionLogin         AuditAction = "LOGIN"
+	ActionUpdateSetting AuditAction = "UPDATE_SETTINGS"
+	ActionCreateAdmin   AuditAction = "CREATE_ADMIN"
+	ActionUpdateAdmin   AuditAction = "UPDATE_ADMIN"
+	ActionDeleteAdmin   AuditAction = "DELETE_ADMIN"
+	ActionRequestAccess AuditAction = "REQUEST_ACCESS"
+	ActionApproveAccess AuditAction = "APPROVE_ACCESS"
+	ActionRejectAccess  AuditAction = "REJECT_ACCESS"
 )
 
 type AuditLog struct {
@@ -42,25 +46,17 @@ type AuditLog struct {
 }
 
 func Record(db *sql.DB, r *http.Request, logEntry AuditLog) {
-	var adminToken string
-
+	// Gerçek yönetici kimliğini (RBAC) context'ten oku; yoksa 'system'.
+	adminRef := "system"
 	if r != nil {
-		token, ok := r.Context().Value(AdminTokenContextKey).(string)
-		if ok && token != "" {
-			adminToken = token
+		if ident, ok := IdentityFromContext(r.Context()); ok && ident != nil && ident.Username != "" {
+			adminRef = ident.Username
 		}
 	}
-
-	if adminToken == "" {
-		log.Printf("[INFO] Audit log: Context'te admin token bulunamadı. 'system' olarak kaydediliyor.")
-		adminToken = "system"
+	if len(adminRef) > 255 {
+		adminRef = adminRef[:255]
 	}
-
-	if len(adminToken) > 8 {
-		logEntry.AdminRef = adminToken[:8]
-	} else {
-		logEntry.AdminRef = adminToken
-	}
+	logEntry.AdminRef = adminRef
 
 	query := `
   		INSERT INTO audit_logs (admin_ref, action, target_type, target_id, status, error_message)

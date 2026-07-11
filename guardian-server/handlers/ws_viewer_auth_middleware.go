@@ -1,35 +1,35 @@
 package handlers
 
 import (
-	"crypto/subtle"
+	"context"
+	"database/sql"
 	"net/http"
-	"os"
+
+	"guardian.com/server/services"
 )
 
-// AdminWSAuth, canlı oturum izleme WebSocket bağlantıları için kullanılan admin
-// kimlik doğrulamasıdır. Tarayıcılar WebSocket handshake'inde özel header
-// gönderemediğinden, token burada istisnai olarak URL query parametresinden
-// (?token=...) okunur. Diğer tüm admin endpoint'leri AdminAuth middleware'ini
-// (yalnızca Authorization header) kullanmalıdır.
-func AdminWSAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		expectedToken := os.Getenv("GUARDIAN_ADMIN_TOKEN")
-		if expectedToken == "" {
-			http.Error(w, "Sunucu güvenlik yapılandırması eksik (ADMIN_TOKEN)", http.StatusInternalServerError)
-			return
-		}
+// AdminWSAuth, canlı oturum izleme WebSocket bağlantıları için kimlik
+// doğrulamasıdır. Tarayıcılar WebSocket handshake'inde özel header
+// gönderemediğinden, oturum token'ı burada istisnai olarak URL query
+// parametresinden (?token=...) okunur ve admin_sessions'ta doğrulanır.
+// Diğer tüm admin endpoint'leri AdminAuth (Authorization header) kullanır.
+func AdminWSAuth(db *sql.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := r.URL.Query().Get("token")
+			if token == "" {
+				http.Error(w, "Yetki bilgisi (token) URL parametresinde bulunamadı.", http.StatusUnauthorized)
+				return
+			}
 
-		token := r.URL.Query().Get("token")
-		if token == "" {
-			http.Error(w, "Yetki bilgisi (token) URL parametresinde bulunamadı.", http.StatusUnauthorized)
-			return
-		}
+			ident, err := services.ValidateSession(db, token)
+			if err != nil {
+				http.Error(w, "Oturum geçersiz veya süresi dolmuş.", http.StatusUnauthorized)
+				return
+			}
 
-		if subtle.ConstantTimeCompare([]byte(token), []byte(expectedToken)) != 1 {
-			http.Error(w, "Geçersiz veya yetkisiz token.", http.StatusForbidden)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
+			ctx := context.WithValue(r.Context(), services.AdminIdentityContextKey, ident)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }

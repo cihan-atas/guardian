@@ -5,6 +5,8 @@
 export const STATUS_LABELS: Record<string, string> = {
   active: 'Aktif',
   pending: 'Bekliyor',
+  awaiting_approval: 'Onay Bekliyor',
+  rejected: 'Reddedildi',
   expired: 'Süresi Doldu',
   revoked: 'İptal Edildi (Yasak)',
   ended: 'Normal Bitti',
@@ -33,7 +35,8 @@ export function statusTone(status: string): StatusTone {
   if (status === 'ended') return 'success';
   if (status.startsWith('error') || status === 'lost_contact') return 'danger';
   if (status === 'revoked' || status === 'terminated_by_ban') return 'danger';
-  if (status.startsWith('terminated') || status === 'timed_out' || status === 'pending') return 'warning';
+  if (status === 'rejected') return 'danger';
+  if (status.startsWith('terminated') || status === 'timed_out' || status === 'pending' || status === 'awaiting_approval') return 'warning';
   if (status === 'expired') return 'neutral';
   return 'neutral';
 }

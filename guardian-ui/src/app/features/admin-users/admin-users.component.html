@@ -1,0 +1,128 @@
+<header class="flex flex-wrap items-end justify-between gap-4 mb-6">
+  <div>
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Yönetim</p>
+    <h1 class="text-2xl font-bold text-text-main tracking-tight">Yöneticiler</h1>
+    <p class="mt-1 text-sm text-text-secondary">Panel hesapları ve rolleri. Roller: <span class="text-text-main">İzleyici</span> (salt-okunur), <span class="text-text-main">Operatör</span> (talep + oturum sonlandırma), <span class="text-text-main">Yönetici</span> (tam yetki).</p>
+  </div>
+  <button (click)="openCreate()"
+          class="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors">
+    <fa-icon [icon]="faPlus"></fa-icon> Yeni Yönetici
+  </button>
+</header>
+
+<div *ngIf="isLoading" class="text-center text-text-secondary py-16">
+  <fa-icon [icon]="faSpinner" class="fa-spin text-3xl text-accent"></fa-icon>
+</div>
+
+<div *ngIf="!isLoading" class="bg-dark-card rounded-xl border border-dark-border overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-dark-main text-text-secondary text-[11px] uppercase tracking-wider">
+        <tr>
+          <th class="text-left font-semibold px-4 py-3">Kullanıcı</th>
+          <th class="text-left font-semibold px-4 py-3">Rol</th>
+          <th class="text-left font-semibold px-4 py-3">Durum</th>
+          <th class="text-left font-semibold px-4 py-3">Son Giriş</th>
+          <th class="text-right font-semibold px-4 py-3">İşlem</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-dark-border">
+        <tr *ngFor="let u of users" class="hover:bg-dark-interactive/40 transition-colors">
+          <td class="px-4 py-3">
+            <div class="font-semibold text-text-main">
+              {{ u.display_name || u.username }}
+              <span *ngIf="isSelf(u)" class="ml-2 text-[10px] uppercase tracking-wider text-accent">(siz)</span>
+            </div>
+            <div class="text-[11px] text-text-secondary font-mono">{{ u.username }}</div>
+          </td>
+          <td class="px-4 py-3">
+            <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                  [ngClass]="{
+                    'bg-danger-500/10 text-danger-400': u.role === 'admin',
+                    'bg-warning-500/10 text-warning-400': u.role === 'operator',
+                    'bg-dark-interactive text-text-secondary': u.role === 'viewer'
+                  }">{{ roleLabel(u.role) }}</span>
+          </td>
+          <td class="px-4 py-3">
+            <span *ngIf="!u.disabled" class="text-[11px] font-semibold text-success-400">Aktif</span>
+            <span *ngIf="u.disabled" class="text-[11px] font-semibold text-text-secondary">Devre Dışı</span>
+          </td>
+          <td class="px-4 py-3 text-text-secondary whitespace-nowrap">
+            {{ u.last_login ? (u.last_login | date:'dd.MM.yy HH:mm') : '—' }}
+          </td>
+          <td class="px-4 py-3">
+            <div class="flex items-center justify-end gap-2">
+              <button (click)="openEdit(u)" title="Düzenle"
+                      class="w-8 h-8 flex items-center justify-center rounded-lg bg-dark-interactive text-text-secondary hover:text-text-main transition-colors">
+                <fa-icon [icon]="faPen"></fa-icon>
+              </button>
+              <button *ngIf="!isSelf(u)" (click)="toggleDisabled(u)" [title]="u.disabled ? 'Etkinleştir' : 'Devre dışı bırak'"
+                      class="w-8 h-8 flex items-center justify-center rounded-lg bg-dark-interactive transition-colors"
+                      [ngClass]="u.disabled ? 'text-success-400 hover:bg-success-500/20' : 'text-warning-400 hover:bg-warning-500/20'">
+                <fa-icon [icon]="u.disabled ? faUserCheck : faUserSlash"></fa-icon>
+              </button>
+              <button *ngIf="!isSelf(u)" (click)="remove(u)" title="Sil"
+                      class="w-8 h-8 flex items-center justify-center rounded-lg bg-danger-500/10 text-danger-400 hover:bg-danger-500/20 transition-colors">
+                <fa-icon [icon]="faTrash"></fa-icon>
+              </button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Oluştur / Düzenle modalı -->
+<div *ngIf="showForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" (click)="showForm = false">
+  <div class="w-full max-w-md bg-dark-card rounded-xl border border-dark-border p-6 space-y-4" (click)="$event.stopPropagation()">
+    <h2 class="text-lg font-bold text-text-main flex items-center gap-2">
+      <fa-icon [icon]="faUserShield" class="text-accent"></fa-icon>
+      {{ model.id === null ? 'Yeni Yönetici' : 'Yöneticiyi Düzenle' }}
+    </h2>
+
+    <div>
+      <label class="block text-sm font-medium text-text-secondary mb-1">Kullanıcı adı</label>
+      <input type="text" [(ngModel)]="model.username" [disabled]="model.id !== null" autocomplete="off"
+             class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent disabled:opacity-60">
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-text-secondary mb-1">Görünen ad</label>
+      <input type="text" [(ngModel)]="model.display_name" autocomplete="off"
+             class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-text-secondary mb-1">Rol</label>
+      <div class="space-y-2">
+        <label *ngFor="let r of roles"
+               class="flex items-start gap-2 cursor-pointer rounded-lg border p-2.5 transition-colors"
+               [ngClass]="model.role === r.value ? 'border-accent bg-accent/5' : 'border-dark-border hover:border-dark-interactive'">
+          <input type="radio" name="role" [value]="r.value" [(ngModel)]="model.role" class="accent-accent mt-0.5">
+          <span>
+            <span class="block text-sm font-semibold text-text-main">{{ r.label }}</span>
+            <span class="block text-[11px] text-text-secondary leading-snug">{{ r.hint }}</span>
+          </span>
+        </label>
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-text-secondary mb-1">
+        Parola <span *ngIf="model.id !== null" class="text-text-secondary normal-case font-normal">(boş bırakılırsa değişmez)</span>
+      </label>
+      <input type="password" [(ngModel)]="model.password" autocomplete="new-password"
+             [placeholder]="model.id === null ? 'En az 6 karakter' : '••••••••'"
+             class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+    </div>
+
+    <div class="flex items-center justify-end gap-3 pt-2">
+      <button (click)="showForm = false" class="px-4 py-2 rounded-lg text-text-secondary hover:text-text-main transition-colors">İptal</button>
+      <button (click)="save()" [disabled]="isSaving"
+              class="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50">
+        <fa-icon [icon]="faSpinner" *ngIf="isSaving" class="fa-spin"></fa-icon> Kaydet
+      </button>
+    </div>
+  </div>
+</div>

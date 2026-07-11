@@ -18,7 +18,9 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
 
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
-       if (error.status === 401 || error.status === 403) {
+      // Yalnızca 401 (oturum geçersiz/süresi dolmuş) çıkışa yol açar.
+      // 403 (yetersiz rol) legitimate bir yetki reddidir; oturum düşürülmez.
+      if (error.status === 401) {
         authService.logout();
       }
       return throwError(() => error);

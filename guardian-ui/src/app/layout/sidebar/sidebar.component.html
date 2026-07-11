@@ -30,13 +30,25 @@
        class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
        <fa-icon [icon]="faKeys" class="w-5 mr-3 fa-fw"></fa-icon> SSH Anahtarları
     </a>
-    <a routerLink="/settings" routerLinkActive="bg-accent text-white"
+    <a routerLink="/access-requests" routerLinkActive="bg-accent text-white"
+       class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
+       <fa-icon [icon]="faRequests" class="w-5 mr-3 fa-fw"></fa-icon> Erişim Talepleri
+    </a>
+    <a *ngIf="isAdmin()" routerLink="/admin-users" routerLinkActive="bg-accent text-white"
+       class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
+       <fa-icon [icon]="faAdmins" class="w-5 mr-3 fa-fw"></fa-icon> Yöneticiler
+    </a>
+    <a *ngIf="isAdmin()" routerLink="/settings" routerLinkActive="bg-accent text-white"
        class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
        <fa-icon [icon]="faSettings" class="w-5 mr-3 fa-fw"></fa-icon> Ayarlar
     </a>
   </nav>
 
-  <div class="mt-auto">
+  <div class="mt-auto space-y-3">
+    <div class="px-4 py-3 rounded-lg bg-dark-main border border-dark-border">
+      <p class="text-sm font-semibold text-text-main truncate">{{ username }}</p>
+      <p class="text-[11px] uppercase tracking-wider text-accent mt-0.5">{{ roleLabel }}</p>
+    </div>
     <button (click)="logout()" class="group flex items-center w-full px-4 py-2.5 text-text-secondary rounded-lg hover:bg-danger-800 hover:text-white transition-colors">
         <fa-icon [icon]="faLogout" class="w-5 mr-3 fa-fw"></fa-icon>
         Çıkış Yap

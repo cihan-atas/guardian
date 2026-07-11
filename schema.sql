@@ -557,3 +557,37 @@ ALTER TABLE ONLY public.sessions
 -- PostgreSQL database dump complete
 --
 
+
+--
+-- RBAC (yönetici hesapları + oturumlar) ve onay akışı için ek şema.
+-- Sunucu açılışta bu yapıları idempotent olarak da oluşturur (auto-migration);
+-- burada taze kurulumlar için belgelenmiştir.
+--
+
+CREATE TABLE IF NOT EXISTS public.admin_users (
+    id serial PRIMARY KEY,
+    username character varying(100) UNIQUE NOT NULL,
+    password_hash text NOT NULL,
+    role character varying(20) NOT NULL DEFAULT 'viewer',
+    display_name character varying(150),
+    disabled boolean NOT NULL DEFAULT false,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    last_login timestamp with time zone
+);
+
+CREATE TABLE IF NOT EXISTS public.admin_sessions (
+    token character varying(64) PRIMARY KEY,
+    admin_user_id integer NOT NULL REFERENCES public.admin_users(id) ON DELETE CASCADE,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    expires_at timestamp with time zone NOT NULL,
+    last_seen timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_user ON public.admin_sessions(admin_user_id);
+
+-- Onay akışı kolonları (access_rules).
+ALTER TABLE public.access_rules ADD COLUMN IF NOT EXISTS requested_by integer;
+ALTER TABLE public.access_rules ADD COLUMN IF NOT EXISTS approved_by integer;
+ALTER TABLE public.access_rules ADD COLUMN IF NOT EXISTS request_reason text;
+ALTER TABLE public.access_rules ADD COLUMN IF NOT EXISTS reject_reason text;
+ALTER TABLE public.access_rules ADD COLUMN IF NOT EXISTS decided_at timestamp with time zone;

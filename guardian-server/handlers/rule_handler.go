@@ -63,10 +63,12 @@ func ListRules(db *sql.DB) http.HandlerFunc {
 
 		// Opsiyonel arama: sunucu adı, kullanıcı adı veya anahtar adı üzerinde ILIKE.
 		search := strings.TrimSpace(r.URL.Query().Get("search"))
-		where := ""
+		// Onay akışındaki (talep/reddedilmiş) kayıtlar Kurallar listesinde
+		// gösterilmez; onlar Erişim Talepleri ekranında yönetilir.
+		where := " WHERE ar.status NOT IN ('awaiting_approval','rejected')"
 		args := []interface{}{}
 		if search != "" {
-			where = " WHERE (s.hostname ILIKE $1 OR su.username ILIKE $1 OR pk.key_name ILIKE $1)"
+			where += " AND (s.hostname ILIKE $1 OR su.username ILIKE $1 OR pk.key_name ILIKE $1)"
 			args = append(args, "%"+search+"%")
 		}
 		query := fmt.Sprintf(`

@@ -28,27 +28,33 @@ export class LoginComponent {
     private toastr: ToastrService
   ) {
     this.loginForm = this.fb.group({
-      token: ['', Validators.required]
+      username: ['', Validators.required],
+      password: ['', Validators.required]
     });
   }
 
   onSubmit(): void {
-    if (this.loginForm.invalid || !this.loginForm.value.token) {
+    if (this.loginForm.invalid) {
       return;
     }
 
     this.isChecking = true;
-    const token = this.loginForm.value.token;
+    const { username, password } = this.loginForm.value;
 
-    this.apiClient.checkAuth(token).subscribe({
-      next: () => {
+    this.apiClient.login(username, password).subscribe({
+      next: (res) => {
         this.isChecking = false;
-        this.authService.login(token);
+        this.authService.login({
+          token: res.token,
+          username: res.username,
+          role: res.role,
+          display_name: res.display_name,
+        });
       },
-       error: (err: any) => { 
+      error: (err: any) => {
         this.isChecking = false;
         console.error('Login hatası:', err);
-        this.toastr.error('Girilen token geçersiz veya yetkisiz.', 'Giriş Başarısız');
+        this.toastr.error('Kullanıcı adı veya parola hatalı.', 'Giriş Başarısız');
       }
     });
   }

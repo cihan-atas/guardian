@@ -1,0 +1,145 @@
+<header class="flex flex-wrap items-end justify-between gap-4 mb-6">
+  <div>
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Onay Akışı</p>
+    <h1 class="text-2xl font-bold text-text-main tracking-tight">Erişim Talepleri</h1>
+    <p class="mt-1 text-sm text-text-secondary">Operatörler erişim talep eder, yöneticiler onaylar/reddeder. Onaylanan talep, başlangıç zamanında otomatik etkinleşir.</p>
+  </div>
+  <button *ngIf="canRequest" (click)="openForm()"
+          class="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors">
+    <fa-icon [icon]="faPlus"></fa-icon> Yeni Talep
+  </button>
+</header>
+
+<!-- Durum sekmeleri -->
+<div class="flex flex-wrap gap-2 mb-5">
+  <button *ngFor="let t of tabs" (click)="selectTab(t.key)"
+          class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+          [ngClass]="activeTab === t.key ? 'bg-accent text-white' : 'bg-dark-card border border-dark-border text-text-secondary hover:text-text-main'">
+    {{ t.label }}
+  </button>
+</div>
+
+<div *ngIf="isLoading" class="text-center text-text-secondary py-16">
+  <fa-icon [icon]="faSpinner" class="fa-spin text-3xl text-accent"></fa-icon>
+</div>
+
+<!-- Boş durum -->
+<div *ngIf="!isLoading && requests.length === 0"
+     class="text-center py-16 bg-dark-card rounded-xl border border-dark-border">
+  <fa-icon [icon]="faInbox" class="text-4xl text-text-secondary mb-3"></fa-icon>
+  <p class="text-text-secondary">Bu görünümde talep yok.</p>
+</div>
+
+<!-- Liste -->
+<div *ngIf="!isLoading && requests.length > 0" class="bg-dark-card rounded-xl border border-dark-border overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-dark-main text-text-secondary text-[11px] uppercase tracking-wider">
+        <tr>
+          <th class="text-left font-semibold px-4 py-3">Erişim</th>
+          <th class="text-left font-semibold px-4 py-3">Zaman Aralığı</th>
+          <th class="text-left font-semibold px-4 py-3">Gerekçe</th>
+          <th class="text-left font-semibold px-4 py-3">Talep / Karar</th>
+          <th class="text-left font-semibold px-4 py-3">Durum</th>
+          <th class="text-right font-semibold px-4 py-3">İşlem</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-dark-border">
+        <tr *ngFor="let req of requests" class="hover:bg-dark-interactive/40 transition-colors">
+          <td class="px-4 py-3">
+            <div class="font-semibold text-text-main">{{ req.username }}&#64;{{ req.server_hostname }}</div>
+            <div class="text-[11px] text-text-secondary font-mono">{{ req.key_name }}</div>
+          </td>
+          <td class="px-4 py-3 text-text-secondary whitespace-nowrap">
+            <div>{{ req.valid_from | date:'dd.MM.yy HH:mm' }}</div>
+            <div class="text-[11px]">→ {{ req.valid_until | date:'dd.MM.yy HH:mm' }}</div>
+          </td>
+          <td class="px-4 py-3 text-text-secondary max-w-[220px]">
+            <span class="line-clamp-2" [title]="req.request_reason">{{ req.request_reason || '—' }}</span>
+            <div *ngIf="req.reject_reason" class="text-[11px] text-danger-400 mt-1" [title]="req.reject_reason">
+              Red: {{ req.reject_reason }}
+            </div>
+          </td>
+          <td class="px-4 py-3 text-text-secondary text-[12px]">
+            <div *ngIf="req.requested_by">Talep: {{ req.requested_by }}</div>
+            <div *ngIf="req.approved_by">Karar: {{ req.approved_by }}</div>
+            <div *ngIf="!req.requested_by && !req.approved_by">—</div>
+          </td>
+          <td class="px-4 py-3"><app-status-badge [status]="req.status"></app-status-badge></td>
+          <td class="px-4 py-3">
+            <div class="flex items-center justify-end gap-2" *ngIf="canApprove && req.status === 'awaiting_approval'; else noAction">
+              <button (click)="approve(req)" title="Onayla"
+                      class="w-8 h-8 flex items-center justify-center rounded-lg bg-success-500/10 text-success-400 hover:bg-success-500/20 transition-colors">
+                <fa-icon [icon]="faCheck"></fa-icon>
+              </button>
+              <button (click)="reject(req)" title="Reddet"
+                      class="w-8 h-8 flex items-center justify-center rounded-lg bg-danger-500/10 text-danger-400 hover:bg-danger-500/20 transition-colors">
+                <fa-icon [icon]="faXmark"></fa-icon>
+              </button>
+            </div>
+            <ng-template #noAction><span class="block text-right text-text-secondary">—</span></ng-template>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Talep oluşturma modalı -->
+<div *ngIf="showForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" (click)="showForm = false">
+  <div class="w-full max-w-lg bg-dark-card rounded-xl border border-dark-border p-6 space-y-4" (click)="$event.stopPropagation()">
+    <h2 class="text-lg font-bold text-text-main flex items-center gap-2">
+      <fa-icon [icon]="faPlus" class="text-accent"></fa-icon> Yeni Erişim Talebi
+    </h2>
+
+    <div>
+      <label class="block text-sm font-medium text-text-secondary mb-1">Sunucu</label>
+      <select [(ngModel)]="form.server_id" class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+        <option [ngValue]="null" disabled>Seçin…</option>
+        <option *ngFor="let s of servers" [ngValue]="s.id">{{ s.hostname }} ({{ s.ip_address }})</option>
+      </select>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">Sistem Kullanıcısı</label>
+        <select [(ngModel)]="form.system_user_id" class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+          <option [ngValue]="null" disabled>Seçin…</option>
+          <option *ngFor="let u of users" [ngValue]="u.id">{{ u.username }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">SSH Anahtarı</label>
+        <select [(ngModel)]="form.public_key_id" class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+          <option [ngValue]="null" disabled>Seçin…</option>
+          <option *ngFor="let k of keys" [ngValue]="k.id">{{ k.key_name }}</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">Başlangıç</label>
+        <input type="datetime-local" [(ngModel)]="form.valid_from" class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">Bitiş</label>
+        <input type="datetime-local" [(ngModel)]="form.valid_until" class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-text-secondary mb-1">Gerekçe</label>
+      <textarea [(ngModel)]="form.reason" rows="2" placeholder="Neden erişim gerekiyor?"
+                class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent"></textarea>
+    </div>
+
+    <div class="flex items-center justify-end gap-3 pt-2">
+      <button (click)="showForm = false" class="px-4 py-2 rounded-lg text-text-secondary hover:text-text-main transition-colors">İptal</button>
+      <button (click)="submit()" [disabled]="isSubmitting"
+              class="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50">
+        <fa-icon [icon]="isSubmitting ? faSpinner : faCheck" [class.fa-spin]="isSubmitting"></fa-icon> Talep Oluştur
+      </button>
+    </div>
+  </div>
+</div>

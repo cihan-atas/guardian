@@ -34,7 +34,9 @@ services:
       GUARDIAN_SERVER_PORT: 5555
       GUARDIAN_AGENT_PORT: 6666
       GUARDIAN_SECRET_TOKEN: ${GUARDIAN_SECRET_TOKEN}
-      GUARDIAN_ADMIN_TOKEN: ${GUARDIAN_ADMIN_TOKEN}
+      # İlk yönetici hesabı (yalnızca admin_users tablosu boşken kullanılır).
+      GUARDIAN_ADMIN_USERNAME: ${GUARDIAN_ADMIN_USERNAME:-admin}
+      GUARDIAN_ADMIN_PASSWORD: ${GUARDIAN_ADMIN_PASSWORD:-}
       # Bildirimler & riskli komut alarmı (opsiyonel; .env'de boşsa devre dışı).
       GUARDIAN_WEBHOOK_URL: ${GUARDIAN_WEBHOOK_URL:-}
       GUARDIAN_SMTP_HOST: ${GUARDIAN_SMTP_HOST:-}

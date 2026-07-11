@@ -64,19 +64,33 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 - **Yeni env değişkenleri** (server.conf): `GUARDIAN_WEBHOOK_URL`, `GUARDIAN_SMTP_HOST/PORT/USER/PASS/FROM`, `GUARDIAN_ALERT_EMAIL_TO`, `GUARDIAN_RISKY_AUTOACTION`.
 - **UI'dan yönetim (Ayarlar sayfası):** Bu ayarlar artık `settings` (key-value) tablosunda tutulur ve `/settings` ekranından düzenlenir; env değerleri yalnızca ilk açılışta (tablo boşsa) tohumlanır. Kayıttan sonra notifier + alerting canlı yeniden yüklenir (restart yok). Endpoint'ler: `GET/PUT /api/settings`, `POST /api/settings/test`. SMTP parolası write-only (GET'te dönmez, boş bırakılırsa korunur). "Test Bildirimi Gönder" butonuyla kanal denenebilir.
 
+### 10. RBAC — Yönetici hesapları + roller (2026-07-11)
+- **Statik `GUARDIAN_ADMIN_TOKEN` tamamen kaldırıldı.** Giriş artık kullanıcı adı + parola (bcrypt) ile; başarılı girişte DB'de (`admin_sessions`) sunucu-taraflı, revoke edilebilir bir oturum token'ı üretilir (12 saat TTL). Tüm istekler `Authorization: Bearer <oturum-token>` kullanır (`auth_service.go`, `auth_handler.go`).
+- **Roller:** `viewer` (salt-okunur) < `operator` (izleme + erişim talebi + oturum sonlandırma) < `admin` (tam yetki). `RequireRole` middleware'i rota bazında rütbe kontrolü yapar; mutasyon uçları admin'e, oturum sonlandırma + talep açma operatöre kapılıdır.
+- **İlk yönetici bootstrap:** `admin_users` boşsa `GUARDIAN_ADMIN_USERNAME`/`GUARDIAN_ADMIN_PASSWORD`'dan oluşturulur; parola boşsa rastgele geçici parola üretilip log'a yazılır. Tablolar açılışta otomatik oluşturulur (auto-migration).
+- **Audit gerçek kimliğe bağlandı:** kayıtlar artık token prefix'i yerine gerçek kullanıcı adını yazar (önceki cross-package context anahtarı uyuşmazlığı da giderildi). LOGIN dahil yeni audit aksiyonları eklendi.
+- **Kendini-kilitleme koruması:** son aktif admin'in rolü düşürülemez/silinemez/devre dışı bırakılamaz; kullanıcı kendini silemez/devre dışı bırakamaz. Parola değişimi ve devre dışı bırakma ilgili oturumları düşürür. Süresi dolmuş oturumlar scheduler'da temizlenir.
+- **UI:** kullanıcı adı+parola giriş formu; auth.service rol+oturum saklar (`hasRole`); `roleGuard` ve rol kapılı sidebar; **Yöneticiler** ekranı (CRUD + rol + devre dışı + parola). 403 (yetersiz rol) artık kullanıcıyı çıkışa zorlamaz (yalnızca 401).
+- **CLI:** statik token yerine `GUARDIAN_ADMIN_USERNAME`/`GUARDIAN_ADMIN_PASSWORD` ile `/auth/login` üzerinden oturum token'ı alır.
+
+### 11. Onay akışı (approval workflow) (2026-07-11)
+- Operatör erişim talebi açar (sunucu + anahtar + sistem kullanıcısı + zaman aralığı + gerekçe) → `access_rules`'ta `awaiting_approval` durumunda kaydedilir; scheduler etkinleştirmez.
+- Admin **onaylar** → durum `pending` olur, `approved_by`/`decided_at` işlenir; agent'ta kullanıcı doğrulanır + yasak kontrol edilir; scheduler `valid_from` geldiğinde kuralı otomatik etkinleştirir. Admin **reddeder** → `rejected` + gerekçe.
+- `access_rules`'a `requested_by`/`approved_by`/`request_reason`/`reject_reason`/`decided_at` kolonları eklendi (auto-migration). Kurallar listesi `awaiting_approval`/`rejected` kayıtlarını gizler (onlar Erişim Talepleri ekranında).
+- Endpoint'ler: `GET /api/access-requests` (viewer+), `POST /api/access-requests` (operator+), `POST /api/access-requests/{id}/approve|reject` (admin). UI: **Erişim Talepleri** ekranı (durum sekmeleri, talep formu, onay/red).
+
 ---
 
 ## 🗺️ Yol Haritası / Planlanan Özellikler
 
 ### Sırada
-3. **Onay akışı (approval workflow)** — kullanıcı erişim talep eder, admin tek tıkla onaylar/reddeder; self-service JIT.
-4. **Admin hesapları + roller (RBAC)** — tek statik token yerine çoklu admin (TOTP/parola), `viewer/operator/admin` rolleri; audit'te gerçek kimlik.
 5. **Agent sağlık göstergesi** — Sunucular sayfasında agent çevrimiçi/çevrimdışı durumu (heartbeat/ping tabanlı).
 6. **Tam Audit Log sayfası** — filtreli/aranabilir denetim kaydı ekranı (menüye 6. kalem; veri ve servis zaten mevcut).
 7. **Global komut arama** — tüm oturumlarda komut arama ("kim `chmod 777` çalıştırdı?") + sonuçtan replay'e ilgili komuta derin link.
 8. **Windows agent desteği** — Windows OpenSSH `authorized_keys` + ConPTY uyarlaması (projenin başındaki çapraz platform hedefi).
 9. **Kayıt saklama politikası** — `session_events` için otomatik temizlik/arşiv zamanlayıcısı (örn. 90 gün).
 10. **Replay'i asciicast dışa aktarma** — kayıtları asciinema formatında indirme (paylaşım/delil).
+11. **2FA (TOTP)** — RBAC üzerine opsiyonel iki adımlı doğrulama (login'de TOTP kodu).
 
 ---
 

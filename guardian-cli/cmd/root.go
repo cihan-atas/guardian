@@ -23,17 +23,21 @@ var rootCmd = &cobra.Command{
 		}
 
 		apiURL := os.Getenv("GUARDIAN_SERVER_HOST") + ":" + os.Getenv("GUARDIAN_SERVER_PORT") + "/api"
-		adminToken := os.Getenv("GUARDIAN_ADMIN_TOKEN")
+		username := os.Getenv("GUARDIAN_ADMIN_USERNAME")
+		password := os.Getenv("GUARDIAN_ADMIN_PASSWORD")
 		caCertFile := os.Getenv("TLS_CA_FILE")
 
-		if adminToken == "" || apiURL == "" || caCertFile == "" {
-			log.Fatal("HATA: GUARDIAN_SERVER_HOST, GUARDIAN_SERVER_PORT, GUARDIAN_ADMIN_TOKEN ve TLS_CA_FILE ortam değişkenleri ayarlanmalıdır.")
+		if username == "" || password == "" || apiURL == "" || caCertFile == "" {
+			log.Fatal("HATA: GUARDIAN_SERVER_HOST, GUARDIAN_SERVER_PORT, GUARDIAN_ADMIN_USERNAME, GUARDIAN_ADMIN_PASSWORD ve TLS_CA_FILE ortam değişkenleri ayarlanmalıdır.")
 		}
 
 		var err error
-		apiClient, err = client.New(apiURL, adminToken, caCertFile)
+		apiClient, err = client.New(apiURL, caCertFile)
 		if err != nil {
 			log.Fatalf("API istemcisi oluşturulamadı: %v", err)
+		}
+		if err := apiClient.Login(username, password); err != nil {
+			log.Fatalf("Giriş yapılamadı: %v", err)
 		}
 	},
 }

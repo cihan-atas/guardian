@@ -10,6 +10,9 @@ import { LiveSessionComponent } from './features/live-session/live-session.compo
 import { ReplaySessionComponent } from './features/replay-session/replay-session.component';
 import { DashboardComponent } from './features/dashboard/dashboard.component';
 import { SettingsComponent } from './features/settings/settings.component';
+import { AccessRequestsComponent } from './features/access-requests/access-requests.component';
+import { AdminUsersComponent } from './features/admin-users/admin-users.component';
+import { roleGuard } from './core/guards/role.guard';
 
 export const routes: Routes = [
     { path: 'login', component: LoginComponent },
@@ -29,7 +32,9 @@ export const routes: Routes = [
         { path: 'keys', component: KeysComponent },
         { path: 'rules', component: RulesComponent },
         { path: 'sessions', component: SessionsComponent },
-        { path: 'settings', component: SettingsComponent },
+        { path: 'access-requests', component: AccessRequestsComponent },
+        { path: 'admin-users', component: AdminUsersComponent, canActivate: [roleGuard], data: { role: 'admin' } },
+        { path: 'settings', component: SettingsComponent, canActivate: [roleGuard], data: { role: 'admin' } },
       ]
     },
 

@@ -271,8 +271,11 @@ GUARDIAN_AGENT_PORT=6666
 # Agent'ların sunucuya bağlanırken kullandığı paylaşımlı gizli anahtar.
 GUARDIAN_SECRET_TOKEN=bu-super-gizli-bir-token-DEGISTIR
 
-# Guardian CLI aracılığıyla yönetimsel komutları çalıştırmak ve Web Arayüzüne (UI) bağlanmak için gereken yönetici token.
-GUARDIAN_ADMIN_TOKEN=yonetici-icin-cok-gizli-bir-token-DEGISTIR
+# İlk yönetici hesabı (yalnızca ilk açılışta, admin_users tablosu boşken kullanılır).
+# Giriş kullanıcı adı + parola iledir; statik admin token kaldırıldı. Parola boş
+# bırakılırsa sunucu rastgele bir geçici parola üretip log'a yazar.
+GUARDIAN_ADMIN_USERNAME=admin
+GUARDIAN_ADMIN_PASSWORD=guclu-bir-parola-DEGISTIR
 
 
 # --- TLS/SSL Sertifika Ayarları --------------------------------

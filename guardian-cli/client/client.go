@@ -18,7 +18,7 @@ type Client struct {
 	adminToken string
 }
 
-func New(baseURL, adminToken, caCertFile string) (*Client, error) {
+func New(baseURL, caCertFile string) (*Client, error) {
 	caCert, err := os.ReadFile(caCertFile)
 	if err != nil {
 		return nil, fmt.Errorf("CA sertifikası okunamadı (%s): %w", caCertFile, err)
@@ -39,9 +39,46 @@ func New(baseURL, adminToken, caCertFile string) (*Client, error) {
 			Timeout:   15 * time.Second,
 			Transport: transport,
 		},
-		baseURL:    baseURL,
-		adminToken: adminToken,
+		baseURL: baseURL,
 	}, nil
+}
+
+// Login, kullanıcı adı + parola ile giriş yapar ve dönen oturum token'ını
+// istemciye kaydeder. Statik admin token kaldırıldığından tüm yönetim
+// istekleri bu oturum token'ıyla yapılır.
+func (c *Client) Login(username, password string) error {
+	payload := map[string]string{"username": username, "password": password}
+	jsonData, _ := json.Marshal(payload)
+
+	req, err := http.NewRequest("POST", c.baseURL+"/auth/login", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("giriş isteği oluşturulamadı: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("giriş isteği gönderilemedi: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("giriş başarısız (%s): %s", resp.Status, string(bodyBytes))
+	}
+
+	var out struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fmt.Errorf("giriş yanıtı okunamadı: %w", err)
+	}
+	if out.Token == "" {
+		return fmt.Errorf("giriş yanıtında token yok")
+	}
+	c.adminToken = out.Token
+	return nil
 }
 
 type Server struct {

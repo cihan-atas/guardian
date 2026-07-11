@@ -25,7 +25,7 @@ Detaylar için [Sertifika Oluşturma Rehberi](./generate-certs-usage.md)'ne bak�
 
 ```bash
 cp .env.example .env
-nano .env   # POSTGRES_PASSWORD, GUARDIAN_SECRET_TOKEN, GUARDIAN_ADMIN_TOKEN değerlerini değiştirin
+nano .env   # POSTGRES_PASSWORD, GUARDIAN_SECRET_TOKEN, GUARDIAN_ADMIN_USERNAME/PASSWORD değerlerini değiştirin
 ```
 
 `.env` dosyası `.gitignore` ile hariç tutulur; sırlarınızı asla commit etmeyin.
@@ -51,7 +51,8 @@ docker compose logs -f guardian-server
   ```bash
   export GUARDIAN_SERVER_HOST="https://<docker-host-ip>"
   export GUARDIAN_SERVER_PORT="5555"
-  export GUARDIAN_ADMIN_TOKEN="<.env dosyanızdaki GUARDIAN_ADMIN_TOKEN>"
+  export GUARDIAN_ADMIN_USERNAME="<.env dosyanızdaki GUARDIAN_ADMIN_USERNAME>"
+  export GUARDIAN_ADMIN_PASSWORD="<.env dosyanızdaki GUARDIAN_ADMIN_PASSWORD>"
   export TLS_CA_FILE="./certs/ca.crt"
   ```
 

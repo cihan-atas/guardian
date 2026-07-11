@@ -38,6 +38,10 @@ func main() {
 	secretToken := os.Getenv("GUARDIAN_SECRET_TOKEN")
 	caCertFile := getEnv("TLS_CA_FILE", "../certs/ca.crt")
 
+	// İlk yönetici hesabı (yalnızca admin_users tablosu boşsa kullanılır).
+	bootstrapAdminUser := getEnv("GUARDIAN_ADMIN_USERNAME", "admin")
+	bootstrapAdminPass := os.Getenv("GUARDIAN_ADMIN_PASSWORD")
+
 	// Bildirim/alarm ayarları artık DB'de tutulur ve UI'dan yönetilir; env
 	// değerleri yalnızca ilk açılışta (settings tablosu boşsa) tohum olur.
 	settingsEnvDefaults := map[string]string{
@@ -56,9 +60,6 @@ func main() {
 	}
 	if secretToken == "" {
 		log.Fatal("FATAL: Güvenlik için GUARDIAN_SECRET_TOKEN ortam değişkeni ayarlanmamış!")
-	}
-	if os.Getenv("GUARDIAN_ADMIN_TOKEN") == "" {
-		log.Fatal("FATAL: Güvenlik için GUARDIAN_ADMIN_TOKEN ortam değişkeni ayarlanmamış!")
 	}
 
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
@@ -87,6 +88,17 @@ func main() {
 	}
 	if err := services.InitSettings(db, settingsEnvDefaults); err != nil {
 		log.Fatalf("ayarlar yüklenemedi: %v", err)
+	}
+
+	// RBAC (yönetici hesapları/oturumlar) + onay akışı için tablo/kolonlar.
+	if err := services.EnsureAuthTables(db); err != nil {
+		log.Fatalf("auth tabloları oluşturulamadı: %v", err)
+	}
+	if err := services.EnsureAccessRequestColumns(db); err != nil {
+		log.Fatalf("access_rules kolonları eklenemedi: %v", err)
+	}
+	if err := services.BootstrapAdmin(db, bootstrapAdminUser, bootstrapAdminPass); err != nil {
+		log.Fatalf("ilk yönetici oluşturulamadı: %v", err)
 	}
 
 	ac := agentclient.New(agentPort, secretToken, caCertFile)
@@ -124,16 +136,39 @@ func main() {
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Use(handlers.AdminWSAuth)
+			r.Use(handlers.AdminWSAuth(db))
 			r.Get("/ws/sessions/{sessionID}", handlers.ViewerSessionStreamHandler(wsHub))
 		})
 
-		r.Group(func(r chi.Router) {
-			r.Use(handlers.AdminAuth)
+		// Herkese açık giriş.
+		r.Post("/auth/login", handlers.Login(db))
 
-			r.Get("/auth/check", func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"status": "ok"}`))
+		r.Group(func(r chi.Router) {
+			r.Use(handlers.AdminAuth(db))
+
+			// Rol kapıları.
+			admin := handlers.RequireRole(services.RoleAdmin)
+			operator := handlers.RequireRole(services.RoleOperator)
+
+			// Kimlik doğrulanmış her kullanıcı.
+			r.Get("/auth/me", handlers.Me())
+			r.Post("/auth/logout", handlers.Logout(db))
+			r.Post("/auth/change-password", handlers.ChangeOwnPassword(db))
+
+			// Yönetici hesapları (yalnızca admin).
+			r.Route("/admin-users", func(r chi.Router) {
+				r.With(admin).Get("/", handlers.ListAdminUsers(db))
+				r.With(admin).Post("/", handlers.CreateAdminUser(db))
+				r.With(admin).Patch("/{adminID}", handlers.UpdateAdminUser(db))
+				r.With(admin).Delete("/{adminID}", handlers.DeleteAdminUser(db))
+			})
+
+			// Erişim talepleri (onay akışı).
+			r.Route("/access-requests", func(r chi.Router) {
+				r.Get("/", handlers.ListAccessRequests(db))
+				r.With(operator).Post("/", handlers.CreateAccessRequest(db))
+				r.With(admin).Post("/{requestID}/approve", handlers.ApproveAccessRequest(db, ac))
+				r.With(admin).Post("/{requestID}/reject", handlers.RejectAccessRequest(db))
 			})
 
 			r.Route("/dashboard", func(r chi.Router) {
@@ -152,55 +187,55 @@ func main() {
 			})
 			r.Route("/servers", func(r chi.Router) {
 				r.Get("/", handlers.ListServers(db))
-				r.Post("/", handlers.CreateServer(db))
+				r.With(admin).Post("/", handlers.CreateServer(db))
 				r.Route("/{serverID}", func(r chi.Router) {
 					r.Get("/", handlers.GetServer(db))
-					r.Put("/", handlers.UpdateServer(db))
-					r.Patch("/", handlers.PatchServer(db))
-					r.Delete("/", handlers.DeleteServer(db))
+					r.With(admin).Put("/", handlers.UpdateServer(db))
+					r.With(admin).Patch("/", handlers.PatchServer(db))
+					r.With(admin).Delete("/", handlers.DeleteServer(db))
 				})
 			})
 
 			r.Route("/rules", func(r chi.Router) {
 				r.Get("/", handlers.ListRules(db))
 				// ac'yi (agent client) CreateRule'a geçir
-				r.Post("/", handlers.CreateRule(db, ac))
+				r.With(admin).Post("/", handlers.CreateRule(db, ac))
 				r.Route("/{ruleID}", func(r chi.Router) {
 					r.Get("/", handlers.GetRule(db))
-					r.Put("/", handlers.UpdateRule(db))
+					r.With(admin).Put("/", handlers.UpdateRule(db))
 					// ac'yi PatchRule ve DeleteRule'a geçir
-					r.Patch("/", handlers.PatchRule(db, ac))
-					r.Delete("/", handlers.DeleteRule(db, ac))
+					r.With(admin).Patch("/", handlers.PatchRule(db, ac))
+					r.With(admin).Delete("/", handlers.DeleteRule(db, ac))
 				})
 			})
 
 			r.Route("/keys", func(r chi.Router) {
 				r.Get("/", handlers.ListPublicKeys(db))
-				r.Post("/", handlers.CreatePublicKey(db))
+				r.With(admin).Post("/", handlers.CreatePublicKey(db))
 				r.Route("/{keyID}", func(r chi.Router) {
 					r.Get("/", handlers.GetPublicKey(db))
-					r.Patch("/", handlers.PatchPublicKey(db))
-					r.Delete("/", handlers.DeletePublicKey(db))
+					r.With(admin).Patch("/", handlers.PatchPublicKey(db))
+					r.With(admin).Delete("/", handlers.DeletePublicKey(db))
 					r.Get("/ban", handlers.GetKeyBanStatus(db))
-					r.Post("/ban", handlers.BanPublicKey(db, ac))
-					r.Delete("/ban", handlers.UnbanPublicKey(db))
+					r.With(admin).Post("/ban", handlers.BanPublicKey(db, ac))
+					r.With(admin).Delete("/ban", handlers.UnbanPublicKey(db))
 				})
 			})
 
 			r.Route("/users", func(r chi.Router) {
 				r.Get("/", handlers.ListSystemUsers(db))
-				r.Post("/", handlers.CreateSystemUser(db))
+				r.With(admin).Post("/", handlers.CreateSystemUser(db))
 				r.Route("/{userID}", func(r chi.Router) {
 					r.Get("/", handlers.GetSystemUser(db))
-					r.Patch("/", handlers.PatchSystemUser(db))
-					r.Delete("/", handlers.DeleteSystemUser(db))
+					r.With(admin).Patch("/", handlers.PatchSystemUser(db))
+					r.With(admin).Delete("/", handlers.DeleteSystemUser(db))
 				})
 			})
 
 			r.Route("/settings", func(r chi.Router) {
-				r.Get("/", handlers.GetSettings(db))
-				r.Put("/", handlers.UpdateSettings(db))
-				r.Post("/test", handlers.TestNotification(db))
+				r.With(admin).Get("/", handlers.GetSettings(db))
+				r.With(admin).Put("/", handlers.UpdateSettings(db))
+				r.With(admin).Post("/test", handlers.TestNotification(db))
 			})
 
 			r.Route("/sessions", func(r chi.Router) {
@@ -208,7 +243,7 @@ func main() {
 
 				r.Route("/{sessionID}", func(r chi.Router) {
 					// ac'yi (agent client) TerminateSession'a geçir
-					r.Delete("/", handlers.TerminateSession(db, ac))
+					r.With(operator).Delete("/", handlers.TerminateSession(db, ac))
 					r.Get("/replay", handlers.GetSessionReplay(db))
 					r.Get("/commands", handlers.GetSessionCommands(db))
 					r.Get("/meta", handlers.GetSessionMeta(db))
