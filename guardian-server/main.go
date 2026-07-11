@@ -163,6 +163,9 @@ func main() {
 				r.With(admin).Delete("/{adminID}", handlers.DeleteAdminUser(db))
 			})
 
+			// Denetim kaydı ekranı (yalnızca admin).
+			r.With(admin).Get("/audit-logs", handlers.ListAuditLogs(db))
+
 			// Erişim talepleri (onay akışı).
 			r.Route("/access-requests", func(r chi.Router) {
 				r.Get("/", handlers.ListAccessRequests(db))
@@ -187,6 +190,7 @@ func main() {
 			})
 			r.Route("/servers", func(r chi.Router) {
 				r.Get("/", handlers.ListServers(db))
+				r.Get("/health", handlers.GetServersHealth(db, ac))
 				r.With(admin).Post("/", handlers.CreateServer(db))
 				r.Route("/{serverID}", func(r chi.Router) {
 					r.Get("/", handlers.GetServer(db))

@@ -12,6 +12,7 @@ import { DashboardComponent } from './features/dashboard/dashboard.component';
 import { SettingsComponent } from './features/settings/settings.component';
 import { AccessRequestsComponent } from './features/access-requests/access-requests.component';
 import { AdminUsersComponent } from './features/admin-users/admin-users.component';
+import { AuditLogsComponent } from './features/audit-logs/audit-logs.component';
 import { roleGuard } from './core/guards/role.guard';
 
 export const routes: Routes = [
@@ -33,6 +34,7 @@ export const routes: Routes = [
         { path: 'rules', component: RulesComponent },
         { path: 'sessions', component: SessionsComponent },
         { path: 'access-requests', component: AccessRequestsComponent },
+        { path: 'audit-logs', component: AuditLogsComponent, canActivate: [roleGuard], data: { role: 'admin' } },
         { path: 'admin-users', component: AdminUsersComponent, canActivate: [roleGuard], data: { role: 'admin' } },
         { path: 'settings', component: SettingsComponent, canActivate: [roleGuard], data: { role: 'admin' } },
       ]

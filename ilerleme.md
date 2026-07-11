@@ -81,11 +81,19 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 
 ---
 
+### 12. Agent sağlık göstergesi (2026-07-11)
+- `agentclient.Ping` agent'ın kimlik doğrulamasız `/status` ucuna kısa (3 sn) timeout'lu GET atar. `GET /api/servers/health` tüm sunucuların agent'larını paralel pingler; her biri için `online` + `latency_ms` döner (`AgentPinger` arayüzü, `AgentCommunicator`'ı ve test mock'larını bozmadan).
+- UI: Sunucular sayfasına "Agent Durumu" kolonu (çevrimiçi nabız + gecikme / çevrimdışı / kontrol ediliyor); 20 sn'de bir otomatik tazelenir.
+
+### 13. Tam Audit Log sayfası (2026-07-11)
+- `GET /api/audit-logs` filtreli + sayfalı denetim kaydı (arama: admin_ref/target_type ILIKE; `action`, `status` filtreleri); yalnızca admin.
+- UI: **Denetim Kaydı** ekranı (arama kutusu, aksiyon + sonuç filtreleri, sayfalama, Türkçe aksiyon etiketleri, hata mesajı gösterimi). Sidebar'a admin'e özel "Denetim Kaydı" kalemi. RBAC ile audit artık gerçek kullanıcı adını kaydettiği için ekran anlamlı.
+
+---
+
 ## 🗺️ Yol Haritası / Planlanan Özellikler
 
 ### Sırada
-5. **Agent sağlık göstergesi** — Sunucular sayfasında agent çevrimiçi/çevrimdışı durumu (heartbeat/ping tabanlı).
-6. **Tam Audit Log sayfası** — filtreli/aranabilir denetim kaydı ekranı (menüye 6. kalem; veri ve servis zaten mevcut).
 7. **Global komut arama** — tüm oturumlarda komut arama ("kim `chmod 777` çalıştırdı?") + sonuçtan replay'e ilgili komuta derin link.
 8. **Windows agent desteği** — Windows OpenSSH `authorized_keys` + ConPTY uyarlaması (projenin başındaki çapraz platform hedefi).
 9. **Kayıt saklama politikası** — `session_events` için otomatik temizlik/arşiv zamanlayıcısı (örn. 90 gün).

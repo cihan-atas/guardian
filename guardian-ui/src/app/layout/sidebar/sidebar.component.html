@@ -34,6 +34,10 @@
        class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
        <fa-icon [icon]="faRequests" class="w-5 mr-3 fa-fw"></fa-icon> Erişim Talepleri
     </a>
+    <a *ngIf="isAdmin()" routerLink="/audit-logs" routerLinkActive="bg-accent text-white"
+       class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
+       <fa-icon [icon]="faAudit" class="w-5 mr-3 fa-fw"></fa-icon> Denetim Kaydı
+    </a>
     <a *ngIf="isAdmin()" routerLink="/admin-users" routerLinkActive="bg-accent text-white"
        class="group flex items-center px-4 py-2.5 rounded-lg hover:bg-dark-interactive hover:text-white transition-colors">
        <fa-icon [icon]="faAdmins" class="w-5 mr-3 fa-fw"></fa-icon> Yöneticiler

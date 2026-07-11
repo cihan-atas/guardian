@@ -2,9 +2,9 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators, FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { Subject, Subscription, debounceTime } from 'rxjs';
+import { Subject, Subscription, debounceTime, interval } from 'rxjs';
 import { ToastrService } from 'ngx-toastr';
-import { ApiClientService, Server, CreateServerPayload, UpdateServerPayload } from '../../core/services/api-client.service';
+import { ApiClientService, Server, CreateServerPayload, UpdateServerPayload, ServerHealth } from '../../core/services/api-client.service';
 
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faPlus, faServer, faSync, faMagnifyingGlass, faClockRotateLeft } from '@fortawesome/free-solid-svg-icons';
@@ -44,6 +44,10 @@ export class ServersComponent implements OnInit, OnDestroy {
   private search$ = new Subject<string>();
   private searchSub?: Subscription;
 
+  /** serverID → agent sağlık durumu. */
+  health: Record<number, ServerHealth> = {};
+  private healthSub?: Subscription;
+
   constructor(
     private apiClient: ApiClientService,
     private fb: FormBuilder,
@@ -59,11 +63,30 @@ export class ServersComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.loadServers(1);
+    this.loadHealth();
     this.searchSub = this.search$.pipe(debounceTime(300)).subscribe(() => this.loadServers(1));
+    // Agent sağlık durumunu periyodik tazele (20 sn).
+    this.healthSub = interval(20000).subscribe(() => this.loadHealth());
   }
 
   ngOnDestroy(): void {
     this.searchSub?.unsubscribe();
+    this.healthSub?.unsubscribe();
+  }
+
+  loadHealth(): void {
+    this.apiClient.getServersHealth().subscribe({
+      next: (rows) => {
+        const map: Record<number, ServerHealth> = {};
+        for (const h of rows) map[h.server_id] = h;
+        this.health = map;
+      },
+      error: () => { /* sağlık bilgisi best-effort; hata sessiz geçilir */ },
+    });
+  }
+
+  healthFor(serverId: number): ServerHealth | undefined {
+    return this.health[serverId];
   }
 
   onSearchInput(): void {

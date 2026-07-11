@@ -1,0 +1,85 @@
+<header class="flex flex-wrap items-end justify-between gap-4 mb-6">
+  <div>
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Güvenlik</p>
+    <h1 class="text-2xl font-bold text-text-main tracking-tight">Denetim Kaydı</h1>
+    <p class="mt-1 text-sm text-text-secondary">Yönetim panelinde yapılan tüm işlemler — kim, ne, ne zaman. Filtrelenebilir ve aranabilir.</p>
+  </div>
+  <button (click)="load(currentPage)" [disabled]="isLoading"
+          class="w-9 h-9 flex items-center justify-center rounded-full bg-dark-card border border-dark-border text-text-secondary hover:text-accent hover:border-accent transition-colors disabled:opacity-50"
+          title="Yenile">
+    <fa-icon [icon]="faSync" [class.animate-spin]="isLoading"></fa-icon>
+  </button>
+</header>
+
+<!-- Filtreler -->
+<div class="flex flex-wrap items-center gap-3 mb-4">
+  <div class="relative flex items-center">
+    <fa-icon [icon]="faSearch" class="absolute left-3 text-text-secondary text-xs pointer-events-none"></fa-icon>
+    <input type="text" [(ngModel)]="searchTerm" (input)="onSearchInput()"
+           placeholder="kullanıcı veya hedef ara…"
+           class="bg-dark-card border border-dark-border rounded-lg pl-8 pr-3 py-2 text-sm text-text-main w-56 focus:outline-none focus:border-accent">
+  </div>
+  <select [(ngModel)]="actionFilter" (ngModelChange)="onFilterChange()"
+          class="bg-dark-card border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+    <option value="">Tüm aksiyonlar</option>
+    <option *ngFor="let a of actionOptions" [value]="a.value">{{ a.label }}</option>
+  </select>
+  <select [(ngModel)]="statusFilter" (ngModelChange)="onFilterChange()"
+          class="bg-dark-card border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+    <option value="">Tüm sonuçlar</option>
+    <option value="SUCCESS">Başarılı</option>
+    <option value="FAILURE">Başarısız</option>
+  </select>
+</div>
+
+<div class="bg-dark-card rounded-xl overflow-hidden border border-dark-border">
+  <div class="overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr class="bg-dark-main/60 text-text-secondary text-[11px] uppercase tracking-wider">
+          <th class="text-left font-semibold px-4 py-3">Zaman</th>
+          <th class="text-left font-semibold px-4 py-3">Kullanıcı</th>
+          <th class="text-left font-semibold px-4 py-3">Aksiyon</th>
+          <th class="text-left font-semibold px-4 py-3">Hedef</th>
+          <th class="text-left font-semibold px-4 py-3">Sonuç</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-dark-border">
+        <tr *ngIf="isLoading">
+          <td colspan="5" class="text-center py-12 text-text-secondary">
+            <fa-icon [icon]="faSpinner" class="fa-spin text-2xl text-accent"></fa-icon>
+          </td>
+        </tr>
+        <tr *ngIf="!isLoading && logs.length === 0">
+          <td colspan="5">
+            <div class="text-center py-14 px-6">
+              <fa-icon [icon]="faClipboardList" class="text-4xl text-text-secondary opacity-40"></fa-icon>
+              <h3 class="mt-4 text-base font-medium text-text-main">Kayıt bulunamadı</h3>
+              <p class="mt-1 text-sm text-text-secondary">Bu filtrelerle eşleşen denetim kaydı yok.</p>
+            </div>
+          </td>
+        </tr>
+        <tr *ngFor="let log of logs" class="hover:bg-dark-interactive/40 transition-colors" [class.hidden]="isLoading">
+          <td class="px-4 py-3 whitespace-nowrap font-mono text-xs text-text-secondary">{{ log.created_at | date:'dd.MM.yy HH:mm:ss' }}</td>
+          <td class="px-4 py-3 font-medium text-text-main">{{ log.admin_ref }}</td>
+          <td class="px-4 py-3">{{ actionLabel(log.action) }}</td>
+          <td class="px-4 py-3 text-text-secondary">
+            {{ log.target_type || '—' }}<span *ngIf="log.target_id" class="font-mono"> #{{ log.target_id }}</span>
+          </td>
+          <td class="px-4 py-3">
+            <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                  [ngClass]="log.status === 'SUCCESS' ? 'bg-success-500/10 text-success-400' : 'bg-danger-500/10 text-danger-400'">
+              {{ log.status === 'SUCCESS' ? 'Başarılı' : 'Başarısız' }}
+            </span>
+            <div *ngIf="log.error_message" class="text-[11px] text-danger-400 mt-1 max-w-[280px] truncate" [title]="log.error_message">
+              {{ log.error_message }}
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <app-pagination [page]="currentPage" [limit]="limit" [total]="totalRecords"
+                  (pageChange)="load($event)"></app-pagination>
+</div>

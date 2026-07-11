@@ -87,6 +87,27 @@ func (c *Client) TerminateSession(ip string, sessionID int) error {
 	return c.sendCommand(ip, "terminate-session", payload)
 }
 
+// Ping, agent'ın kimlik doğrulamasız `/status` ucuna kısa timeout'lu bir GET
+// isteği atar; agent çevrimiçi ve TLS el sıkışması başarılıysa nil döner.
+// Sağlık kontrolü için ana httpClient'tan bağımsız kısa bir timeout kullanır.
+func (c *Client) Ping(ip string) error {
+	endpoint := fmt.Sprintf("https://%s:%s/status", ip, c.agentPort)
+
+	client := &http.Client{
+		Timeout:   3 * time.Second,
+		Transport: c.httpClient.Transport,
+	}
+	resp, err := client.Get(endpoint)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("agent %s beklenmeyen durum: %s", ip, resp.Status)
+	}
+	return nil
+}
+
 func (c *Client) ValidateUser(ip, username string) error {
 	log.Printf("    => Agent'a kullanıcı doğrulama isteği gönderiliyor: Host: %s, Kullanıcı: %s", ip, username)
 	payload := map[string]string{"username": username}

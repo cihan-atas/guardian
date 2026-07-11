@@ -37,6 +37,7 @@
         <tr class="bg-dark-main/60">
           <th class="th-cell">ID</th>
           <th class="th-cell">Hostname</th>
+          <th class="th-cell">Agent Durumu</th>
           <th class="th-cell">IP Adresi</th>
           <th class="th-cell">Açıklama</th>
           <th class="th-cell">Eklenme</th>
@@ -45,10 +46,10 @@
       </thead>
       <tbody>
         <tr *ngIf="isLoading">
-          <td colspan="6" class="text-center py-12 text-text-secondary">Veriler yükleniyor…</td>
+          <td colspan="7" class="text-center py-12 text-text-secondary">Veriler yükleniyor…</td>
         </tr>
         <tr *ngIf="!isLoading && servers.length === 0">
-          <td colspan="6">
+          <td colspan="7">
             <div class="text-center py-14 px-6">
               <fa-icon [icon]="faServer" class="text-4xl text-text-secondary opacity-40"></fa-icon>
               <h3 class="mt-4 text-base font-medium text-text-main">Sunucu bulunamadı</h3>
@@ -71,6 +72,28 @@
               </div>
               <span class="font-medium">{{ server.hostname }}</span>
             </div>
+          </td>
+          <td class="td-cell">
+            <ng-container *ngIf="healthFor(server.id) as h; else healthUnknown">
+              <span *ngIf="h.online" class="inline-flex items-center gap-2 text-xs font-semibold text-success-400">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-success-400 opacity-60"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-success-400"></span>
+                </span>
+                Çevrimiçi
+                <span class="text-text-secondary font-normal">· {{ h.latency_ms }}ms</span>
+              </span>
+              <span *ngIf="!h.online" class="inline-flex items-center gap-2 text-xs font-semibold text-danger-400">
+                <span class="inline-flex rounded-full h-2 w-2 bg-danger-500"></span>
+                Çevrimdışı
+              </span>
+            </ng-container>
+            <ng-template #healthUnknown>
+              <span class="inline-flex items-center gap-2 text-xs text-text-secondary">
+                <span class="inline-flex rounded-full h-2 w-2 bg-dark-interactive"></span>
+                Kontrol ediliyor…
+              </span>
+            </ng-template>
           </td>
           <td class="td-cell">
             <span class="font-mono text-xs">{{ server.ip_address }}</span>

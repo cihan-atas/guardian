@@ -238,6 +238,15 @@ export interface Alert {
   server_hostname?: string;
 }
 
+/** Sunucu agent sağlık durumu. */
+export interface ServerHealth {
+  server_id: number;
+  hostname: string;
+  ip_address: string;
+  online: boolean;
+  latency_ms: number;
+}
+
 export interface AuditLog {
   id: number;
   admin_ref: string;
@@ -528,6 +537,20 @@ export class ApiClientService {
 
   getAuditLogStream(): Observable<AuditLog[]> {
     return this.http.get<AuditLog[]>(`${this.apiUrl}/dashboard/audit-stream`);
+  }
+
+  // Denetim kaydı ekranı (filtre + sayfalama).
+  getAuditLogs(page = 1, limit = 20, search?: string, action?: string, status?: string): Observable<PaginatedResponse<AuditLog>> {
+    let params = `page=${page}&limit=${limit}`;
+    if (search?.trim()) params += `&search=${encodeURIComponent(search.trim())}`;
+    if (action?.trim()) params += `&action=${encodeURIComponent(action.trim())}`;
+    if (status?.trim()) params += `&status=${encodeURIComponent(status.trim())}`;
+    return this.http.get<PaginatedResponse<AuditLog>>(`${this.apiUrl}/audit-logs?${params}`);
+  }
+
+  // Sunucu agent sağlık durumu (paralel ping).
+  getServersHealth(): Observable<ServerHealth[]> {
+    return this.http.get<ServerHealth[]>(`${this.apiUrl}/servers/health`);
   }
 
  }
