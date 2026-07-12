@@ -10,7 +10,7 @@ import { TerminalViewerComponent } from '../../shared/terminal-viewer/terminal-v
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import {
   faListUl, faTerminal, faTriangleExclamation,
-  faChevronLeft, faChevronRight, faRotateLeft, faShieldHalved, faClock
+  faChevronLeft, faChevronRight, faRotateLeft, faShieldHalved, faClock, faDownload
 } from '@fortawesome/free-solid-svg-icons';
 
 interface ReplayEvent {
@@ -57,6 +57,9 @@ export class ReplaySessionComponent implements OnInit, OnDestroy {
   faRestart = faRotateLeft;
   faShield = faShieldHalved;
   faClock = faClock;
+  faDownload = faDownload;
+
+  public isExporting = false;
 
   public sessionId: string | null = null;
   public info: SessionDetails['session_info'] | null = null;
@@ -93,6 +96,28 @@ export class ReplaySessionComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.routeSub?.unsubscribe();
+  }
+
+  /** Oturumu asciicast (.cast) olarak indir; asciinema ile oynatılabilir/paylaşılabilir. */
+  exportAsciicast(): void {
+    if (!this.sessionId || this.isExporting) return;
+    const id = Number(this.sessionId);
+    this.isExporting = true;
+    this.apiClient.exportSessionAsciicast(id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `guardian-session-${id}.cast`;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.isExporting = false;
+      },
+      error: () => {
+        this.toastr.error('Asciicast dışa aktarılamadı.', 'Hata');
+        this.isExporting = false;
+      },
+    });
   }
 
   @HostListener('window:keydown', ['$event'])

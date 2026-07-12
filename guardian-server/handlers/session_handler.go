@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
@@ -301,6 +302,107 @@ func GetSessionReplay(db *sql.DB) http.HandlerFunc {
 			Rows   int                   `json:"rows"`
 			Events []models.SessionEvent `json:"events"`
 		}{Cols: cols, Rows: rows, Events: events})
+	}
+}
+
+// ExportSessionAsciicast, bir oturumu asciinema asciicast v2 formatında indirir
+// (paylaşım/delil için). Yalnızca "output" olayları dahil edilir (asciinema
+// standardı; girdiler terminalde zaten yankılanır). Çıktı satır-satır akıtılır,
+// böylece uzun oturumlar bellekte tümüyle tutulmaz.
+//
+// Format: ilk satır JSON başlık {version,width,height,timestamp,title};
+// sonraki her satır [zaman_ofseti_sn, "o", "veri"] üçlüsü.
+func ExportSessionAsciicast(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "sessionID"))
+		if err != nil {
+			http.Error(w, "Geçersiz oturum ID'si", http.StatusBadRequest)
+			return
+		}
+
+		cols, rows, err := sessionTerminalSize(db, sessionID)
+		if err != nil && err != sql.ErrNoRows {
+			log.Printf("Asciicast: oturum meta verisi alınamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		if cols <= 0 {
+			cols = 80
+		}
+		if rows <= 0 {
+			rows = 24
+		}
+
+		// Başlık için oturum bilgisi (varsa) — kullanıcı@host.
+		var username, hostname string
+		var startTime time.Time
+		metaErr := db.QueryRow(`
+			SELECT s.username, COALESCE(sv.hostname, ''), s.start_time
+			FROM sessions s LEFT JOIN servers sv ON sv.id = s.server_id
+			WHERE s.id = $1`, sessionID).Scan(&username, &hostname, &startTime)
+		if metaErr == sql.ErrNoRows {
+			http.Error(w, "Oturum bulunamadı", http.StatusNotFound)
+			return
+		} else if metaErr != nil {
+			log.Printf("Asciicast: oturum bilgisi alınamadı: %v", metaErr)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+
+		queryRows, err := db.Query(`
+			SELECT data, event_time FROM session_events
+			WHERE session_id = $1 AND event_type = 'output'
+			ORDER BY event_time ASC, id ASC`, sessionID)
+		if err != nil {
+			log.Printf("Asciicast: olaylar sorgulanamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer queryRows.Close()
+
+		title := username
+		if hostname != "" {
+			title += "@" + hostname
+		}
+		filename := fmt.Sprintf("guardian-session-%d.cast", sessionID)
+		w.Header().Set("Content-Type", "application/x-asciicast; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+
+		enc := json.NewEncoder(w)
+		// Başlık satırı (asciicast v2).
+		header := map[string]any{
+			"version":   2,
+			"width":     cols,
+			"height":    rows,
+			"timestamp": startTime.Unix(),
+			"title":     title,
+		}
+		if err := enc.Encode(header); err != nil {
+			return // istemci koptu
+		}
+
+		var base time.Time
+		first := true
+		for queryRows.Next() {
+			var data []byte
+			var t time.Time
+			if err := queryRows.Scan(&data, &t); err != nil {
+				log.Printf("Asciicast: olay okunamadı: %v", err)
+				return
+			}
+			if first {
+				base = t
+				first = false
+			}
+			offset := t.Sub(base).Seconds()
+			if offset < 0 {
+				offset = 0
+			}
+			// [zaman, "o", "veri"] — json.Marshal veriyi doğru şekilde kaçışlar.
+			if err := enc.Encode([]any{offset, "o", string(data)}); err != nil {
+				return // istemci koptu
+			}
+		}
 	}
 }
 

@@ -123,12 +123,16 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 - **API:** `GET /api/settings/retention-preview?days=N` (silinecek kayıt sayısı önizlemesi); `GET/PUT /api/settings` retention alanlarını taşır. Ayarlar kaydedilince temizlik hemen tetiklenir (best-effort goroutine).
 - **UI:** Ayarlar'da "Kayıt Saklama Politikası" bölümü — süre ön ayarları (Sınırsız/30/90/180/365 gün) + özel gün girişi, canlı "kaç kayıt etkilenecek" önizlemesi (400ms debounce), son-temizlik bilgisi.
 
+### 19. Replay'i asciicast dışa aktarma (2026-07-12)
+- Oturum kayıtları asciinema **asciicast v2** (`.cast`) formatında indirilebilir (paylaşım/delil; asciinema player ile oynatılır).
+- **API:** `GET /api/sessions/{id}/asciicast` — yalnızca `output` olayları, satır-satır **akış** (streaming; uzun oturumlar bellekte tutulmaz). İlk satır JSON başlık (version/width/height/timestamp/title=`kullanıcı@host`), sonraki satırlar `[zaman_ofseti, "o", "veri"]`. `Content-Disposition: attachment`.
+- **UI:** Replay ekranı başlığında "Dışa aktar" butonu — Bearer auth'lu blob indirme (`guardian-session-<id>.cast`).
+
 ---
 
 ## 🗺️ Yol Haritası / Planlanan Özellikler
 
 ### Sırada
-10. **Replay'i asciicast dışa aktarma** — kayıtları asciinema formatında indirme (paylaşım/delil).
 11. **2FA (TOTP)** — RBAC üzerine opsiyonel iki adımlı doğrulama (login'de TOTP kodu).
 
 ---

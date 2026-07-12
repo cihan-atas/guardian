@@ -29,6 +29,11 @@
               [ngClass]="isCommandsPanelOpen ? 'bg-accent text-white' : 'bg-dark-interactive text-text-secondary hover:text-text-main'">
         <fa-icon [icon]="faListUl"></fa-icon> Komutlar
       </button>
+      <button (click)="exportAsciicast()" [disabled]="!isLoaded || isExporting"
+              title="asciicast (.cast) olarak indir — asciinema ile oynatılabilir"
+              class="flex items-center gap-2 text-xs font-semibold py-1.5 px-3 rounded bg-dark-interactive text-text-secondary hover:text-text-main transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+        <fa-icon [icon]="faDownload"></fa-icon> {{ isExporting ? 'İndiriliyor…' : 'Dışa aktar' }}
+      </button>
       <button (click)="reload()" title="Yeniden yükle" class="w-8 h-8 flex items-center justify-center rounded bg-dark-interactive text-text-secondary hover:text-text-main transition-colors">
         <fa-icon [icon]="faRestart"></fa-icon>
       </button>

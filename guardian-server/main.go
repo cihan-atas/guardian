@@ -299,6 +299,7 @@ func main() {
 					// ac'yi (agent client) TerminateSession'a geçir
 					r.With(operator).Delete("/", handlers.TerminateSession(db, ac))
 					r.Get("/replay", handlers.GetSessionReplay(db))
+					r.Get("/asciicast", handlers.ExportSessionAsciicast(db))
 					r.Get("/commands", handlers.GetSessionCommands(db))
 					r.Get("/meta", handlers.GetSessionMeta(db))
 				})

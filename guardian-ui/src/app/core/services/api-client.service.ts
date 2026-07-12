@@ -532,6 +532,13 @@ export class ApiClientService {
     return this.http.get<SessionTerminalSize>(`${this.apiUrl}/sessions/${sessionId}/meta`);
   }
 
+  /** Oturumu asciinema asciicast (.cast) formatında blob olarak indirir. */
+  exportSessionAsciicast(sessionId: number): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/sessions/${sessionId}/asciicast`, {
+      responseType: 'blob',
+    });
+  }
+
   getSessionDetails(sessionId: number): Observable<SessionDetails> {
     return this.http.get<SessionDetails>(`${this.apiUrl}/sessions/${sessionId}/commands`);
   }
