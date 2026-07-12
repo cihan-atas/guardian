@@ -61,10 +61,13 @@
   </nav>
 
   <div class="mt-auto space-y-3">
-    <div class="px-4 py-3 rounded-lg bg-dark-main border border-dark-border">
-      <p class="text-sm font-semibold text-text-main truncate">{{ username }}</p>
-      <p class="text-[11px] uppercase tracking-wider text-accent mt-0.5">{{ roleLabel }}</p>
-    </div>
+    <a routerLink="/account" routerLinkActive="ring-1 ring-accent"
+       class="block px-4 py-3 rounded-lg bg-dark-main border border-dark-border hover:border-accent transition-colors">
+      <p class="text-sm font-semibold text-text-main truncate flex items-center gap-2">
+        <fa-icon [icon]="faAccount" class="text-accent"></fa-icon> {{ username }}
+      </p>
+      <p class="text-[11px] uppercase tracking-wider text-accent mt-0.5">{{ roleLabel }} · Hesabım</p>
+    </a>
     <button (click)="logout()" class="group flex items-center w-full px-4 py-2.5 text-text-secondary rounded-lg hover:bg-danger-800 hover:text-white transition-colors">
         <fa-icon [icon]="faLogout" class="w-5 mr-3 fa-fw"></fa-icon>
         Çıkış Yap

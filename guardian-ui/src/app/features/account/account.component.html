@@ -1,0 +1,112 @@
+<header class="flex flex-wrap items-end justify-between gap-4 mb-6">
+  <div>
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Hesap</p>
+    <h1 class="text-2xl font-bold text-text-main tracking-tight">Hesabım</h1>
+    <p class="mt-1 text-sm text-text-secondary">{{ username }} — parola ve iki adımlı doğrulama (2FA) yönetimi.</p>
+  </div>
+</header>
+
+<div *ngIf="isLoading" class="text-center text-text-secondary py-16">
+  <fa-icon [icon]="faSpinner" class="fa-spin text-3xl text-accent"></fa-icon>
+</div>
+
+<div *ngIf="!isLoading" class="max-w-2xl space-y-6">
+
+  <!-- İki adımlı doğrulama -->
+  <section class="bg-dark-card rounded-xl border border-dark-border p-6">
+    <div class="flex items-center gap-2 mb-1">
+      <fa-icon [icon]="faShield" class="text-accent"></fa-icon>
+      <h2 class="text-base font-semibold text-text-main">İki Adımlı Doğrulama (2FA)</h2>
+      <span class="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full"
+            [ngClass]="totpEnabled ? 'bg-success-500/10 text-success-400' : 'bg-dark-interactive text-text-secondary'">
+        {{ totpEnabled ? 'Etkin' : 'Kapalı' }}
+      </span>
+    </div>
+    <p class="text-xs text-text-secondary mb-4">Girişte parolaya ek olarak authenticator uygulamanızdaki (Google Authenticator, Authy, 1Password vb.) 6 haneli kod istenir.</p>
+
+    <!-- Kapalı + kurulum başlatılmadı -->
+    <div *ngIf="!totpEnabled && !setupActive">
+      <button (click)="startSetup()" [disabled]="isSettingUp"
+              class="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50">
+        <fa-icon [icon]="isSettingUp ? faSpinner : faQrcode" [class.fa-spin]="isSettingUp"></fa-icon> 2FA Kur
+      </button>
+    </div>
+
+    <!-- Kurulum akışı -->
+    <div *ngIf="setupActive" class="space-y-4">
+      <p class="text-sm text-text-secondary">1. Authenticator uygulamanızla QR kodu okutun veya anahtarı manuel girin:</p>
+      <div class="flex flex-col sm:flex-row gap-5 items-start">
+        <img *ngIf="setupQrDataUrl" [src]="setupQrDataUrl" alt="2FA QR" class="rounded-lg bg-white p-2 w-[220px] h-[220px]">
+        <div class="flex-1 space-y-2">
+          <label class="block text-xs font-medium text-text-secondary">Kurulum anahtarı (manuel)</label>
+          <div class="flex items-center gap-2">
+            <code class="flex-1 bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main font-mono break-all">{{ formattedSecret }}</code>
+            <button (click)="copySecret()" title="Kopyala"
+                    class="px-3 py-2 rounded-lg bg-dark-interactive text-text-secondary hover:text-text-main transition-colors">Kopyala</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">2. Uygulamadaki 6 haneli kodu girin</label>
+        <input type="text" inputmode="numeric" maxlength="6" [(ngModel)]="enableCode"
+               placeholder="000000"
+               class="w-48 px-4 py-2.5 text-xl tracking-[0.3em] text-center font-mono bg-dark-main border border-dark-border rounded-lg text-text-main focus:outline-none focus:border-accent">
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button (click)="confirmEnable()" [disabled]="isEnabling || enableCode.trim().length < 6"
+                class="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50">
+          <fa-icon [icon]="isEnabling ? faSpinner : faCheck" [class.fa-spin]="isEnabling"></fa-icon> Etkinleştir
+        </button>
+        <button (click)="cancelSetup()" class="text-sm text-text-secondary hover:text-text-main transition-colors">Vazgeç</button>
+      </div>
+    </div>
+
+    <!-- Etkin: kapatma -->
+    <div *ngIf="totpEnabled" class="space-y-3">
+      <p class="text-sm text-success-400 flex items-center gap-2"><fa-icon [icon]="faCheck"></fa-icon> Hesabınız 2FA ile korunuyor.</p>
+      <div class="flex flex-wrap items-end gap-3 pt-2 border-t border-dark-border">
+        <div>
+          <label class="block text-sm font-medium text-text-secondary mb-1">Kapatmak için parolanız</label>
+          <input type="password" [(ngModel)]="disablePassword" autocomplete="current-password"
+                 class="w-64 bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+        </div>
+        <button (click)="disable2fa()" [disabled]="isDisabling || !disablePassword"
+                class="flex items-center gap-2 bg-danger-800 hover:bg-danger-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50">
+          <fa-icon [icon]="isDisabling ? faSpinner : faShield" [class.fa-spin]="isDisabling"></fa-icon> 2FA'yı Kapat
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Parola değiştirme -->
+  <section class="bg-dark-card rounded-xl border border-dark-border p-6">
+    <div class="flex items-center gap-2 mb-4">
+      <fa-icon [icon]="faLock" class="text-accent"></fa-icon>
+      <h2 class="text-base font-semibold text-text-main">Parola Değiştir</h2>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="sm:col-span-2">
+        <label class="block text-sm font-medium text-text-secondary mb-1">Mevcut parola</label>
+        <input type="password" [(ngModel)]="currentPassword" autocomplete="current-password"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">Yeni parola</label>
+        <input type="password" [(ngModel)]="newPassword" autocomplete="new-password"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">Yeni parola (tekrar)</label>
+        <input type="password" [(ngModel)]="newPassword2" autocomplete="new-password"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      </div>
+    </div>
+    <button (click)="changePassword()" [disabled]="isChangingPassword || !currentPassword || !newPassword"
+            class="mt-4 flex items-center gap-2 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50">
+      <fa-icon [icon]="isChangingPassword ? faSpinner : faKey" [class.fa-spin]="isChangingPassword"></fa-icon> Parolayı Değiştir
+    </button>
+  </section>
+
+</div>

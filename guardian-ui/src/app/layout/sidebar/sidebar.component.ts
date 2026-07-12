@@ -5,7 +5,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 import { ApiClientService } from '../../core/services/api-client.service';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
-import { faClockRotateLeft, faGavel, faServer, faUsers, faKey, faRightFromBracket, faChartBar, faGear, faInbox, faUserShield, faClipboardList, faMagnifyingGlass, faDownload, faCertificate } from '@fortawesome/free-solid-svg-icons';
+import { faClockRotateLeft, faGavel, faServer, faUsers, faKey, faRightFromBracket, faChartBar, faGear, faInbox, faUserShield, faClipboardList, faMagnifyingGlass, faDownload, faCertificate, faUserGear } from '@fortawesome/free-solid-svg-icons';
 
 @Component({
   selector: 'app-sidebar',
@@ -29,6 +29,7 @@ export class SidebarComponent {
   faCommandSearch = faMagnifyingGlass;
   faAgentInstall = faDownload;
   faCerts = faCertificate;
+  faAccount = faUserGear;
 
   constructor(private authService: AuthService, private api: ApiClientService) {}
 

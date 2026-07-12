@@ -128,12 +128,21 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 - **API:** `GET /api/sessions/{id}/asciicast` — yalnızca `output` olayları, satır-satır **akış** (streaming; uzun oturumlar bellekte tutulmaz). İlk satır JSON başlık (version/width/height/timestamp/title=`kullanıcı@host`), sonraki satırlar `[zaman_ofseti, "o", "veri"]`. `Content-Disposition: attachment`.
 - **UI:** Replay ekranı başlığında "Dışa aktar" butonu — Bearer auth'lu blob indirme (`guardian-session-<id>.cast`).
 
+### 20. İki adımlı doğrulama — 2FA / TOTP (2026-07-12)
+- Yönetici hesapları için opsiyonel TOTP (RFC 6238, SHA1/6 hane/30 sn) 2FA. Google Authenticator, Authy, 1Password vb. uyumlu.
+- **TOTP servisi** (`services/totp_service.go`): yalnızca stdlib (crypto/hmac+sha1, base32) — yeni Go bağımlılığı yok. RFC 6238 test vektörleriyle doğrulandı (T=59→287082, T=1111111109→081804). ±1 pencere saat kayması toleransı, sabit zamanlı karşılaştırma.
+- **Şema:** `admin_users`'a `totp_secret`/`totp_enabled` kolonları (EnsureAuthTables içinde `ADD COLUMN IF NOT EXISTS` migration).
+- **Login akışı:** `Authenticate(..., totpCode)` — parola doğru + 2FA açıksa kod boşsa `ErrTOTPRequired` (login yanıtı `{totp_required:true}`), hatalıysa `ErrInvalidTOTP`. UI iki adımlı: parola → (gerekirse) 6 haneli kod ekranı.
+- **API:** `POST /api/auth/2fa/setup` (gizli anahtar + otpauth URI), `/enable` (kod doğrula → etkinleştir), `/disable` (parola doğrula → kapat). `/auth/me` ve login yanıtı `totp_enabled` taşır. ENABLE_2FA/DISABLE_2FA audit'lenir.
+- **UI:** yeni **Hesabım** sayfası (`features/account`, tüm rollere açık) — parola değiştirme + 2FA yönetimi. Kurulumda QR (istemcide `qrcode` ile üretilir, harici servis yok) + manuel anahtar. Sidebar kullanıcı kutusu bu sayfaya linklendi.
+- Not: parola değiştirmede `VerifyPassword` doğrudan bcrypt kontrolü yapar (Authenticate'in 2FA yan etkisini tetiklemeden).
+
 ---
 
 ## 🗺️ Yol Haritası / Planlanan Özellikler
 
 ### Sırada
-11. **2FA (TOTP)** — RBAC üzerine opsiyonel iki adımlı doğrulama (login'de TOTP kodu).
+_(Ana yol haritası maddeleri tamamlandı. Sıradaki fikirler aşağıdaki "Kalan Eksikler" bölümündeki güvenlik/dayanıklılık başlıklarıdır.)_
 
 ---
 

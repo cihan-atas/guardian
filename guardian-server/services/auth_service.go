@@ -55,6 +55,7 @@ type AdminIdentity struct {
 	Username    string `json:"username"`
 	Role        string `json:"role"`
 	DisplayName string `json:"display_name"`
+	TOTPEnabled bool   `json:"totp_enabled"`
 }
 
 type adminIdentityKey string
@@ -91,6 +92,9 @@ func EnsureAuthTables(db *sql.DB) error {
 			last_seen timestamptz NOT NULL DEFAULT now()
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_admin_sessions_user ON admin_sessions(admin_user_id)`,
+		// 2FA (TOTP) — eski kurulumlarda kolonlar yoksa ekle.
+		`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_secret text`,
+		`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_enabled boolean NOT NULL DEFAULT false`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -161,18 +165,28 @@ func HashPassword(password string) (string, error) {
 // ErrInvalidCredentials, kullanıcı adı/parola eşleşmediğinde döner.
 var ErrInvalidCredentials = errors.New("kullanıcı adı veya parola hatalı")
 
-// Authenticate kullanıcı adı+parola doğrular ve yeni bir oturum token'ı üretir.
-func Authenticate(db *sql.DB, username, password string) (string, *AdminIdentity, error) {
+// ErrTOTPRequired, parola doğru ama hesapta 2FA açık ve kod verilmemiş/eksikse döner.
+var ErrTOTPRequired = errors.New("iki adımlı doğrulama kodu gerekli")
+
+// ErrInvalidTOTP, verilen 2FA kodu hatalıysa döner.
+var ErrInvalidTOTP = errors.New("iki adımlı doğrulama kodu hatalı")
+
+// Authenticate kullanıcı adı+parola (+ 2FA açıksa TOTP kodu) doğrular ve yeni
+// bir oturum token'ı üretir. 2FA açık olup kod boşsa ErrTOTPRequired döner
+// (UI ikinci adımda kodu ister); kod hatalıysa ErrInvalidTOTP.
+func Authenticate(db *sql.DB, username, password, totpCode string) (string, *AdminIdentity, error) {
 	var (
 		id          int
 		hash, role  string
 		displayName sql.NullString
 		disabled    bool
+		totpSecret  sql.NullString
+		totpEnabled bool
 	)
 	err := db.QueryRow(
-		`SELECT id, password_hash, role, display_name, disabled FROM admin_users WHERE username = $1`,
+		`SELECT id, password_hash, role, display_name, disabled, totp_secret, totp_enabled FROM admin_users WHERE username = $1`,
 		strings.TrimSpace(username),
-	).Scan(&id, &hash, &role, &displayName, &disabled)
+	).Scan(&id, &hash, &role, &displayName, &disabled, &totpSecret, &totpEnabled)
 	if err == sql.ErrNoRows {
 		// Zamanlama saldırısını zorlaştırmak için yine de bir bcrypt karşılaştırması yap.
 		bcrypt.CompareHashAndPassword([]byte("$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinva"), []byte(password))
@@ -188,6 +202,16 @@ func Authenticate(db *sql.DB, username, password string) (string, *AdminIdentity
 		return "", nil, ErrInvalidCredentials
 	}
 
+	// 2FA açıksa TOTP kodunu doğrula (parola doğrulandıktan sonra).
+	if totpEnabled {
+		if strings.TrimSpace(totpCode) == "" {
+			return "", nil, ErrTOTPRequired
+		}
+		if !ValidateTOTP(totpSecret.String, totpCode) {
+			return "", nil, ErrInvalidTOTP
+		}
+	}
+
 	token := randomToken(32)
 	expiresAt := time.Now().UTC().Add(sessionTTL)
 	if _, err := db.Exec(
@@ -198,7 +222,7 @@ func Authenticate(db *sql.DB, username, password string) (string, *AdminIdentity
 	}
 	db.Exec(`UPDATE admin_users SET last_login = now() WHERE id = $1`, id)
 
-	ident := &AdminIdentity{ID: id, Username: username, Role: role, DisplayName: displayName.String}
+	ident := &AdminIdentity{ID: id, Username: username, Role: role, DisplayName: displayName.String, TOTPEnabled: totpEnabled}
 	return token, ident, nil
 }
 
@@ -215,13 +239,14 @@ func ValidateSession(db *sql.DB, token string) (*AdminIdentity, error) {
 		displayName sql.NullString
 		expiresAt   time.Time
 		disabled    bool
+		totpEnabled bool
 	)
 	err := db.QueryRow(`
-		SELECT u.id, u.username, u.role, u.display_name, s.expires_at, u.disabled
+		SELECT u.id, u.username, u.role, u.display_name, s.expires_at, u.disabled, u.totp_enabled
 		FROM admin_sessions s
 		JOIN admin_users u ON u.id = s.admin_user_id
 		WHERE s.token = $1`, token,
-	).Scan(&id, &username, &role, &displayName, &expiresAt, &disabled)
+	).Scan(&id, &username, &role, &displayName, &expiresAt, &disabled, &totpEnabled)
 	if err == sql.ErrNoRows {
 		return nil, ErrInvalidCredentials
 	}
@@ -235,7 +260,7 @@ func ValidateSession(db *sql.DB, token string) (*AdminIdentity, error) {
 	// last_seen'i asenkron güncelle (best-effort).
 	go func() { db.Exec(`UPDATE admin_sessions SET last_seen = now() WHERE token = $1`, token) }()
 
-	return &AdminIdentity{ID: id, Username: username, Role: role, DisplayName: displayName.String}, nil
+	return &AdminIdentity{ID: id, Username: username, Role: role, DisplayName: displayName.String, TOTPEnabled: totpEnabled}, nil
 }
 
 // InvalidateSession bir oturum token'ını (logout) siler.
@@ -254,6 +279,64 @@ func InvalidateUserSessions(db *sql.DB, userID int) error {
 // PurgeExpiredSessions süresi dolmuş oturumları temizler (scheduler çağırır).
 func PurgeExpiredSessions(db *sql.DB) error {
 	_, err := db.Exec(`DELETE FROM admin_sessions WHERE expires_at < now()`)
+	return err
+}
+
+// VerifyPassword, bir kullanıcının parolasını 2FA akışını tetiklemeden
+// doğrular (parola değiştirme / 2FA kapatma gibi hassas işlemler için).
+func VerifyPassword(db *sql.DB, userID int, password string) bool {
+	var hash string
+	if err := db.QueryRow(`SELECT password_hash FROM admin_users WHERE id = $1`, userID).Scan(&hash); err != nil {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
+}
+
+// totpIssuer, authenticator uygulamasında görünecek yayıncı adı.
+const totpIssuer = "Guardian"
+
+// SetupTOTP, kullanıcı için yeni bir TOTP gizli anahtarı üretip kaydeder
+// (henüz etkinleştirmez — enabled=false) ve QR için provisioning URI'sini döner.
+func SetupTOTP(db *sql.DB, userID int) (secret, uri string, err error) {
+	var username string
+	if err = db.QueryRow(`SELECT username FROM admin_users WHERE id = $1`, userID).Scan(&username); err != nil {
+		return "", "", err
+	}
+	secret, err = GenerateTOTPSecret()
+	if err != nil {
+		return "", "", err
+	}
+	// Yeni gizli anahtarı kaydet; doğrulanana kadar enabled=false kalır.
+	if _, err = db.Exec(
+		`UPDATE admin_users SET totp_secret = $1, totp_enabled = false WHERE id = $2`,
+		secret, userID,
+	); err != nil {
+		return "", "", err
+	}
+	uri = TOTPProvisioningURI(secret, username, totpIssuer)
+	return secret, uri, nil
+}
+
+// EnableTOTP, kayıtlı gizli anahtara karşı verilen kodu doğrular ve 2FA'yı
+// etkinleştirir. Anahtar yoksa veya kod hatalıysa hata döner.
+func EnableTOTP(db *sql.DB, userID int, code string) error {
+	var secret sql.NullString
+	if err := db.QueryRow(`SELECT totp_secret FROM admin_users WHERE id = $1`, userID).Scan(&secret); err != nil {
+		return err
+	}
+	if !secret.Valid || secret.String == "" {
+		return errors.New("önce 2FA kurulumu başlatılmalı")
+	}
+	if !ValidateTOTP(secret.String, code) {
+		return ErrInvalidTOTP
+	}
+	_, err := db.Exec(`UPDATE admin_users SET totp_enabled = true WHERE id = $1`, userID)
+	return err
+}
+
+// DisableTOTP, kullanıcının 2FA'sını kapatır ve gizli anahtarı temizler.
+func DisableTOTP(db *sql.DB, userID int) error {
+	_, err := db.Exec(`UPDATE admin_users SET totp_secret = NULL, totp_enabled = false WHERE id = $1`, userID)
 	return err
 }
 

@@ -335,10 +335,13 @@ export type Role = 'viewer' | 'operator' | 'admin';
 
 /** Giriş yanıtı / oturum kimliği. */
 export interface LoginResponse {
-  token: string;
-  username: string;
-  role: Role;
-  display_name: string;
+  token?: string;
+  username?: string;
+  role?: Role;
+  display_name?: string;
+  totp_enabled?: boolean;
+  /** true ise parola doğru ama 2FA kodu gerekli (ikinci adım). */
+  totp_required?: boolean;
 }
 
 export interface AuthIdentity {
@@ -346,6 +349,7 @@ export interface AuthIdentity {
   username: string;
   role: Role;
   display_name: string;
+  totp_enabled?: boolean;
 }
 
 /** Yönetici hesabı (RBAC). */
@@ -418,8 +422,25 @@ export class ApiClientService {
     return params;
   }
 
-  login(username: string, password: string): Observable<LoginResponse> {
-    return this.http.post<LoginResponse>(`${this.apiUrl}/auth/login`, { username, password });
+  login(username: string, password: string, totpCode?: string): Observable<LoginResponse> {
+    return this.http.post<LoginResponse>(`${this.apiUrl}/auth/login`, {
+      username, password, totp_code: totpCode || '',
+    });
+  }
+
+  /** 2FA kurulumunu başlatır: gizli anahtar + otpauth URI döner (henüz etkin değil). */
+  setup2fa(): Observable<{ secret: string; otpauth_uri: string }> {
+    return this.http.post<{ secret: string; otpauth_uri: string }>(`${this.apiUrl}/auth/2fa/setup`, {});
+  }
+
+  /** Kurulum kodunu doğrulayıp 2FA'yı etkinleştirir. */
+  enable2fa(code: string): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/auth/2fa/enable`, { code });
+  }
+
+  /** Parolayı doğrulayarak 2FA'yı kapatır. */
+  disable2fa(password: string): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/auth/2fa/disable`, { password });
   }
 
   logout(): Observable<void> {

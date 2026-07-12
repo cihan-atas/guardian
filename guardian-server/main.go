@@ -193,6 +193,10 @@ func main() {
 			r.Get("/auth/me", handlers.Me())
 			r.Post("/auth/logout", handlers.Logout(db))
 			r.Post("/auth/change-password", handlers.ChangeOwnPassword(db))
+			// İki adımlı doğrulama (2FA / TOTP) — kendi hesabı için.
+			r.Post("/auth/2fa/setup", handlers.Setup2FA(db))
+			r.Post("/auth/2fa/enable", handlers.Enable2FA(db))
+			r.Post("/auth/2fa/disable", handlers.Disable2FA(db))
 
 			// Yönetici hesapları (yalnızca admin).
 			r.Route("/admin-users", func(r chi.Router) {

@@ -16,6 +16,7 @@ import { AuditLogsComponent } from './features/audit-logs/audit-logs.component';
 import { CommandSearchComponent } from './features/command-search/command-search.component';
 import { AgentInstallComponent } from './features/agent-install/agent-install.component';
 import { CertificatesComponent } from './features/certificates/certificates.component';
+import { AccountComponent } from './features/account/account.component';
 import { roleGuard } from './core/guards/role.guard';
 
 export const routes: Routes = [
@@ -38,6 +39,7 @@ export const routes: Routes = [
         { path: 'sessions', component: SessionsComponent },
         { path: 'access-requests', component: AccessRequestsComponent },
         { path: 'command-search', component: CommandSearchComponent },
+        { path: 'account', component: AccountComponent },
         { path: 'agent-install', component: AgentInstallComponent, canActivate: [roleGuard], data: { role: 'admin' } },
         { path: 'certificates', component: CertificatesComponent, canActivate: [roleGuard], data: { role: 'admin' } },
         { path: 'audit-logs', component: AuditLogsComponent, canActivate: [roleGuard], data: { role: 'admin' } },
