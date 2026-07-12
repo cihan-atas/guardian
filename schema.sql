@@ -591,3 +591,12 @@ ALTER TABLE public.access_rules ADD COLUMN IF NOT EXISTS approved_by integer;
 ALTER TABLE public.access_rules ADD COLUMN IF NOT EXISTS request_reason text;
 ALTER TABLE public.access_rules ADD COLUMN IF NOT EXISTS reject_reason text;
 ALTER TABLE public.access_rules ADD COLUMN IF NOT EXISTS decided_at timestamp with time zone;
+
+-- Agent kayıt (enrollment) token'ları — UI'dan agent oto-kurulumu için.
+CREATE TABLE IF NOT EXISTS public.agent_enroll_tokens (
+    token character varying(64) PRIMARY KEY,
+    server_id integer NOT NULL REFERENCES public.servers(id) ON DELETE CASCADE,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    expires_at timestamp with time zone NOT NULL,
+    used_at timestamp with time zone
+);

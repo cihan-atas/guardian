@@ -1,0 +1,131 @@
+<header class="mb-6">
+  <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Envanter</p>
+  <h1 class="text-2xl font-bold text-text-main tracking-tight">Agent Kurulumu</h1>
+  <p class="mt-1 text-sm text-text-secondary">Hedef sunucuya guardian-agent'ı kur. Sertifika sunucu tarafından otomatik imzalanır (enrollment). Kayıt token'ı 30 dk geçerli, tek kullanımlıktır.</p>
+</header>
+
+<div class="max-w-3xl space-y-6">
+  <!-- Sunucu seçimi -->
+  <section class="bg-dark-card rounded-xl border border-dark-border p-6">
+    <label class="block text-sm font-medium text-text-secondary mb-1">Hedef Sunucu</label>
+    <select [(ngModel)]="selectedServerId" (ngModelChange)="onServerChange()"
+            class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      <option [ngValue]="null" disabled>Seçin…</option>
+      <option *ngFor="let s of servers" [ngValue]="s.id">{{ s.hostname }} ({{ s.ip_address }})</option>
+    </select>
+    <p class="text-[11px] text-text-secondary mt-2">Sunucu kayıtlı değilse önce <span class="text-text-main">Sunucular</span> ekranından ekleyin.</p>
+  </section>
+
+  <!-- Mod seçimi -->
+  <div class="flex gap-2">
+    <button (click)="mode = 'manual'"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+            [ngClass]="mode === 'manual' ? 'bg-accent text-white' : 'bg-dark-card border border-dark-border text-text-secondary hover:text-text-main'">
+      <fa-icon [icon]="faTerminal"></fa-icon> Manuel (komut)
+    </button>
+    <button (click)="mode = 'ssh'"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+            [ngClass]="mode === 'ssh' ? 'bg-accent text-white' : 'bg-dark-card border border-dark-border text-text-secondary hover:text-text-main'">
+      <fa-icon [icon]="faBolt"></fa-icon> SSH ile otomatik
+    </button>
+  </div>
+
+  <!-- MANUEL -->
+  <section *ngIf="mode === 'manual'" class="bg-dark-card rounded-xl border border-dark-border p-6 space-y-4">
+    <div class="flex items-center gap-2">
+      <fa-icon [icon]="faTerminal" class="text-accent"></fa-icon>
+      <h2 class="text-base font-semibold text-text-main">Manuel Kurulum</h2>
+    </div>
+    <p class="text-xs text-text-secondary">Aşağıdaki komutu <span class="text-text-main">hedef sunucuda</span> root/sudo ile çalıştırın. Script; kullanıcı/dizin/sertifika/systemd dahil her şeyi kurar.</p>
+
+    <button (click)="generate()" [disabled]="isGenerating || !selectedServerId"
+            class="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50">
+      <fa-icon [icon]="isGenerating ? faSpinner : faDownload" [class.fa-spin]="isGenerating"></fa-icon>
+      Kurulum Komutu Üret
+    </button>
+
+    <div *ngIf="enroll" class="space-y-3">
+      <div class="relative bg-dark-main border border-dark-border rounded-lg p-3">
+        <code class="block font-mono text-xs text-text-main break-all pr-10">{{ enroll.install_command }}</code>
+        <span class="absolute top-2 right-2">
+          <app-copy-button [value]="enroll.install_command" title="Komutu kopyala"></app-copy-button>
+        </span>
+      </div>
+      <p class="text-[11px] text-text-secondary">
+        Token <span class="font-mono text-text-main">{{ enroll.expires_at | date:'HH:mm:ss' }}</span>'e kadar geçerli.
+        Kurulum sonrası sshd ayarları + kullanıcı authorized_keys adımları script çıktısında listelenir.
+      </p>
+      <div *ngIf="!enroll.binary_available" class="flex items-start gap-2 text-xs text-warning-400 bg-warning-500/10 rounded-lg p-3">
+        <fa-icon [icon]="faWarn" class="mt-0.5"></fa-icon>
+        <span>Sunucuda agent binary bulunamadı; script binary'yi indiremez. Sunucuda <code>GUARDIAN_AGENT_BINARY_PATH</code> ayarlayın.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- SSH -->
+  <section *ngIf="mode === 'ssh'" class="bg-dark-card rounded-xl border border-dark-border p-6 space-y-4">
+    <div class="flex items-center gap-2">
+      <fa-icon [icon]="faBolt" class="text-accent"></fa-icon>
+      <h2 class="text-base font-semibold text-text-main">SSH ile Otomatik Kurulum</h2>
+    </div>
+    <p class="text-xs text-text-secondary">Sunucu, verdiğiniz SSH bilgileriyle hedefe bağlanıp kurulumu kendisi çalıştırır. Kimlik bilgileri saklanmaz, yalnızca bu işlem için kullanılır.</p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="sm:col-span-2">
+        <label class="block text-sm font-medium text-text-secondary mb-1">SSH Host</label>
+        <input type="text" [(ngModel)]="ssh.host" placeholder="hedef IP/hostname"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">Port</label>
+        <input type="text" [(ngModel)]="ssh.port" placeholder="22"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main font-mono focus:outline-none focus:border-accent">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">SSH Kullanıcı</label>
+        <input type="text" [(ngModel)]="ssh.user" placeholder="root" autocomplete="off"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+      </div>
+      <div class="sm:col-span-2">
+        <label class="block text-sm font-medium text-text-secondary mb-1">Kimlik Yöntemi</label>
+        <div class="flex gap-2">
+          <label class="flex-1 cursor-pointer rounded-lg border p-2 text-center text-sm transition-colors"
+                 [ngClass]="ssh.authType === 'password' ? 'border-accent bg-accent/5 text-text-main' : 'border-dark-border text-text-secondary'">
+            <input type="radio" name="authType" value="password" [(ngModel)]="ssh.authType" class="hidden"> Parola
+          </label>
+          <label class="flex-1 cursor-pointer rounded-lg border p-2 text-center text-sm transition-colors"
+                 [ngClass]="ssh.authType === 'key' ? 'border-accent bg-accent/5 text-text-main' : 'border-dark-border text-text-secondary'">
+            <input type="radio" name="authType" value="key" [(ngModel)]="ssh.authType" class="hidden"> Özel Anahtar
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="ssh.authType === 'password'">
+      <label class="block text-sm font-medium text-text-secondary mb-1">SSH Parolası</label>
+      <input type="password" [(ngModel)]="ssh.password" autocomplete="new-password"
+             class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+    </div>
+    <div *ngIf="ssh.authType === 'key'">
+      <label class="block text-sm font-medium text-text-secondary mb-1">Özel Anahtar (PEM)</label>
+      <textarea [(ngModel)]="ssh.privateKey" rows="5" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-xs text-text-main font-mono focus:outline-none focus:border-accent"></textarea>
+    </div>
+
+    <button (click)="install()" [disabled]="isInstalling || !selectedServerId"
+            class="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50">
+      <fa-icon [icon]="isInstalling ? faSpinner : faBolt" [class.fa-spin]="isInstalling"></fa-icon>
+      {{ isInstalling ? 'Kuruluyor…' : 'SSH ile Kur' }}
+    </button>
+
+    <div *ngIf="sshResult" class="space-y-2">
+      <div class="flex items-center gap-2 text-sm font-semibold"
+           [ngClass]="sshResult.success ? 'text-success-400' : 'text-danger-400'">
+        <fa-icon [icon]="sshResult.success ? faBolt : faWarn"></fa-icon>
+        {{ sshResult.success ? 'Kurulum başarılı' : 'Kurulum başarısız' }}
+      </div>
+      <pre *ngIf="sshResult.output" class="bg-dark-main border border-dark-border rounded-lg p-3 text-xs text-text-secondary font-mono overflow-x-auto max-h-96 whitespace-pre-wrap">{{ sshResult.output }}</pre>
+      <p *ngIf="sshResult.error" class="text-xs text-danger-400">{{ sshResult.error }}</p>
+    </div>
+  </section>
+</div>

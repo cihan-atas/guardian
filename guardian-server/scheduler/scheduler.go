@@ -55,6 +55,10 @@ func runChecks(db *sql.DB, agentClient agentclient.AgentCommunicator) {
 	if err := services.PurgeExpiredSessions(db); err != nil {
 		log.Printf("[WARN] Süresi dolmuş oturumlar temizlenemedi: %v", err)
 	}
+	// Süresi geçmiş agent kayıt token'larını temizle (best-effort).
+	if err := services.PurgeExpiredEnrollTokens(db); err != nil {
+		log.Printf("[WARN] Süresi geçmiş kayıt token'ları temizlenemedi: %v", err)
+	}
 
 	log.Println("✅ Kural kontrolü tamamlandı.")
 }

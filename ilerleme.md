@@ -94,6 +94,13 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 - Komut indeksi `ParseSessionEvents`'in komut dizisiyle birebir hizalı (aynı ayrıştırma/temizleme mantığı) → sonuçtan **replay'e derin link**: `/replay/:id?cmd=<index>` replay'i doğrudan o komutta açar.
 - UI: **Komut Arama** ekranı (debounce'lu arama, riskli komut vurgusu, durum rozeti, "Replay" derin linki). Sidebar'a "Komut Arama" kalemi (tüm roller). Replay `?cmd=` query param'ını okuyup başlangıç karesini ilgili komuta ayarlar.
 
+### 15. UI'dan agent kurulumu (manuel script + SSH oto-kurulum) (2026-07-12)
+- **PKI/enrollment:** Sunucu, CA özel anahtarını (`TLS_CA_KEY_FILE`, docker'da `/etc/guardian/certs/ca.key`) yükleyip agent CSR'larını `crypto/x509` ile imzalar (`pki_service.go`). CA anahtarı yoksa oto-kurulum devre dışı kalır, sunucu normal çalışır. Kayıt token'ları `agent_enroll_tokens` (30 dk, tek kullanımlık; auto-migration + scheduler temizliği).
+- **Uçlar (kayıt token'ıyla, admin oturumu gerekmez):** `GET /api/agent/install.sh`, `POST /api/agent/enroll` (CSR imzala), `GET /api/agent/ca.crt`, `GET /api/agent/binary`. Admin: `POST /api/servers/{id}/enroll-token`, `POST /api/servers/{id}/ssh-install`.
+- **Manuel kurulum:** UI'da sunucu seçilir → tek satırlık `curl … | sudo bash` komutu üretilir. Script hedefte kullanıcı/grup, dizin, agent SSH anahtarı, TLS key+CSR üretir; sertifikayı sunucuya imzalatır; `ca.crt` + binary indirir; `agent.conf` + systemd yazar ve servisi başlatır. sshd ve kullanıcı-`authorized_keys` adımları güvenlik gereği otomatik yapılmaz, çıktıda listelenir.
+- **SSH oto-kurulum:** Sunucu, verilen SSH bilgisiyle (parola/özel anahtar) hedefe `x/crypto/ssh` ile bağlanıp aynı komutu uzaktan çalıştırır; çıktı UI'ya döner. Kimlik bilgileri saklanmaz.
+- **UI:** admin'e özel **Agent Kurulumu** ekranı (sunucu seç, Manuel/SSH sekmeleri, komut kopyalama, çıktı). Yeni env: `TLS_CA_KEY_FILE`, `GUARDIAN_AGENT_BINARY_PATH`, `GUARDIAN_PUBLIC_URL` (.env.example + docker-compose belgelendi).
+
 ---
 
 ## 🗺️ Yol Haritası / Planlanan Özellikler

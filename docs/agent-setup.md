@@ -1,5 +1,11 @@
 ## 🛡️ Guardian Agent Kurulumu
 
+> **İpucu:** Çoğu durumda bu manuel adımlara gerek yoktur. Web arayüzündeki
+> **Agent Kurulumu** ekranı (yalnızca admin) hedef sunucu için tek satırlık bir
+> `curl … | sudo bash` komutu üretir ya da SSH ile uzaktan otomatik kurar;
+> sertifikalar sunucu tarafından otomatik imzalanır. Bu rehber, otomatik kurulumun
+> mümkün olmadığı ortamlar veya adımları elle uygulamak isteyenler içindir.
+
 Bu rehber, yönetilecek bir hedef Linux sunucusuna `guardian-agent`'ın nasıl kurulacağını adım adım anlatır. Tüm komutlar `root` veya `sudo` yetkileriyle çalıştırılmalıdır.
 
 ### Adım 1: `guardian` Sistem Kullanıcısını ve Grubunu Oluşturma

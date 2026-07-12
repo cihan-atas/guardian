@@ -249,6 +249,33 @@ export interface CommandMatch {
   status: string;
 }
 
+/** Agent kayıt token'ı + kurulum komutu yanıtı. */
+export interface EnrollTokenResponse {
+  token: string;
+  expires_at: string;
+  server_id: number;
+  server_hostname: string;
+  server_ip: string;
+  base_url: string;
+  install_command: string;
+  binary_available: boolean;
+}
+
+/** SSH ile uzaktan kurulum sonucu. */
+export interface SSHInstallResult {
+  success: boolean;
+  output: string;
+  error?: string;
+}
+
+export interface SSHInstallPayload {
+  ssh_host?: string;
+  ssh_port?: string;
+  ssh_user: string;
+  ssh_password?: string;
+  ssh_private_key?: string;
+}
+
 /** Sunucu agent sağlık durumu. */
 export interface ServerHealth {
   server_id: number;
@@ -567,6 +594,16 @@ export class ApiClientService {
   // Global komut arama (tüm oturumlarda).
   searchCommands(q: string, limit = 100): Observable<CommandMatch[]> {
     return this.http.get<CommandMatch[]>(`${this.apiUrl}/commands/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+  }
+
+  // Agent kurulumu: bir sunucu için kayıt token'ı + kurulum komutu üret.
+  generateEnrollToken(serverId: number): Observable<EnrollTokenResponse> {
+    return this.http.post<EnrollTokenResponse>(`${this.apiUrl}/servers/${serverId}/enroll-token`, {});
+  }
+
+  // Agent kurulumu: SSH ile uzaktan kur.
+  sshInstallAgent(serverId: number, payload: SSHInstallPayload): Observable<SSHInstallResult> {
+    return this.http.post<SSHInstallResult>(`${this.apiUrl}/servers/${serverId}/ssh-install`, payload);
   }
 
  }

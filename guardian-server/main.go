@@ -42,6 +42,11 @@ func main() {
 	bootstrapAdminUser := getEnv("GUARDIAN_ADMIN_USERNAME", "admin")
 	bootstrapAdminPass := os.Getenv("GUARDIAN_ADMIN_PASSWORD")
 
+	// Agent oto-kurulum (enrollment) için CA anahtarı + binary + genel URL.
+	caKeyFile := getEnv("TLS_CA_KEY_FILE", "../certs/ca.key")
+	agentBinaryPath := os.Getenv("GUARDIAN_AGENT_BINARY_PATH")
+	publicURL := os.Getenv("GUARDIAN_PUBLIC_URL")
+
 	// Bildirim/alarm ayarları artık DB'de tutulur ve UI'dan yönetilir; env
 	// değerleri yalnızca ilk açılışta (settings tablosu boşsa) tohum olur.
 	settingsEnvDefaults := map[string]string{
@@ -100,6 +105,29 @@ func main() {
 	if err := services.BootstrapAdmin(db, bootstrapAdminUser, bootstrapAdminPass); err != nil {
 		log.Fatalf("ilk yönetici oluşturulamadı: %v", err)
 	}
+	if err := services.EnsureEnrollTable(db); err != nil {
+		log.Fatalf("agent_enroll_tokens tablosu oluşturulamadı: %v", err)
+	}
+
+	// CA anahtarını (ca.key) yükle; yoksa agent oto-kurulum (enrollment) devre
+	// dışı kalır ama sunucu normal çalışmaya devam eder.
+	var agentCA *services.CA
+	if loaded, caErr := services.LoadCA(caCertFile, caKeyFile); caErr == nil {
+		agentCA = loaded
+		log.Println("✅ CA anahtarı yüklendi; agent oto-kurulum (enrollment) etkin.")
+	} else {
+		log.Printf("[WARN] CA anahtarı yüklenemedi (%s); agent oto-kurulum devre dışı: %v", caKeyFile, caErr)
+	}
+
+	installer := &handlers.AgentInstaller{
+		DB:          db,
+		CA:          agentCA,
+		BinaryPath:  agentBinaryPath,
+		SecretToken: secretToken,
+		ServerPort:  serverPort,
+		AgentPort:   agentPort,
+		PublicURL:   publicURL,
+	}
 
 	ac := agentclient.New(agentPort, secretToken, caCertFile)
 	wsHub := hub.NewHub()
@@ -142,6 +170,13 @@ func main() {
 
 		// Herkese açık giriş.
 		r.Post("/auth/login", handlers.Login(db))
+
+		// Agent kurulum uçları — kayıt (enroll) token'ıyla doğrulanır
+		// (hedef sunucunun admin oturumu yoktur). AgentAuth/AdminAuth uygulanmaz.
+		r.Get("/agent/install.sh", installer.ServeInstallScript())
+		r.Post("/agent/enroll", installer.EnrollAgent())
+		r.Get("/agent/ca.crt", installer.ServeCACert())
+		r.Get("/agent/binary", installer.ServeBinary())
 
 		r.Group(func(r chi.Router) {
 			r.Use(handlers.AdminAuth(db))
@@ -200,6 +235,9 @@ func main() {
 					r.With(admin).Put("/", handlers.UpdateServer(db))
 					r.With(admin).Patch("/", handlers.PatchServer(db))
 					r.With(admin).Delete("/", handlers.DeleteServer(db))
+					// Agent kurulumu (yalnızca admin).
+					r.With(admin).Post("/enroll-token", installer.GenerateEnrollToken())
+					r.With(admin).Post("/ssh-install", installer.SSHInstall())
 				})
 			})
 

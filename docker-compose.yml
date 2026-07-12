@@ -49,9 +49,18 @@ services:
       TLS_CA_FILE: /etc/guardian/certs/ca.crt
       TLS_CERT_FILE: /etc/guardian/certs/server.crt
       TLS_KEY_FILE: /etc/guardian/certs/server.key
+      # Agent oto-kurulumu (UI'dan) için: CA anahtarı (imzalama), agent binary
+      # (script'e servis edilir) ve agent'ların sunucuya eriştiği genel URL.
+      TLS_CA_KEY_FILE: /etc/guardian/certs/ca.key
+      GUARDIAN_AGENT_BINARY_PATH: ${GUARDIAN_AGENT_BINARY_PATH:-/opt/guardian/guardian-agent}
+      GUARDIAN_PUBLIC_URL: ${GUARDIAN_PUBLIC_URL:-}
     volumes:
-      # generate-certs.sh ile oluşturulan sertifika dizini (salt okunur).
+      # generate-certs.sh ile oluşturulan sertifika dizini (ca.key dahil).
+      # NOT: ca.key agent oto-kurulumu için gerekli; salt okunur bağlanır.
       - ./certs:/etc/guardian/certs:ro
+      # Agent binary'sini servis etmek için (UI'dan kurulum). Derleyip buraya koyun:
+      #   (cd guardian-agent && go build -o ../agent-dist/guardian-agent .)
+      - ./agent-dist:/opt/guardian:ro
     ports:
       # Agent'ların bağlandığı port (diğer sunuculardaki agent'lar için gerekli).
       - "6666:6666"
