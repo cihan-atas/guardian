@@ -1,6 +1,6 @@
 # Guardian — İlerleme Durumu
 
-> Bu dosya, projede yapılan çalışmaları ve bilinen eksikleri takip etmek için tutulur. Son güncelleme: 2026-07-11.
+> Bu dosya, projede yapılan çalışmaları ve bilinen eksikleri takip etmek için tutulur. Son güncelleme: 2026-07-13.
 
 ## Proje Özeti
 
@@ -171,3 +171,27 @@ _(Ana yol haritası maddeleri tamamlandı. Sıradaki fikirler aşağıdaki "Kala
     ```sql
     ALTER TABLE sessions ADD COLUMN cols integer, ADD COLUMN rows integer;
     ```
+
+### Windows'ta guardian-server (sunucu) çalıştırma — durum ve eksikler (2026-07-13)
+
+**Özet:** guardian-server binary'si Windows'a **temiz cross-compile oluyor** (`GOOS=windows GOARCH=amd64 go build` sorunsuz, ~19 MB `guardian-server.exe`). Kodun kendisi büyük ölçüde OS-bağımsız: tüm dosya yolları env değişkenlerinden okunuyor (`TLS_CA_FILE`, `TLS_CERT_FILE`, `TLS_KEY_FILE`, `TLS_CA_KEY_FILE`, `GUARDIAN_AGENT_BINARY_PATH[_WINDOWS]` …), runtime'da Linux'a özgü `syscall`/sinyal/sabit yol kullanımı **yok**. Yani teknik olarak Windows'ta çalışabilir; **ama şu an resmi kurulum/işletim desteği yok** — aşağıdaki boşluklar elle doldurulmalı. (Agent tarafı #8'de zaten Windows'a hazırlandı; buradaki eksikler yalnızca **sunucu**yu Windows'ta koşmakla ilgilidir.)
+
+Eksikler / elle yapılması gerekenler:
+
+1. **Sertifika bootstrap (en önemli boşluk).** İlk kurulumdaki CA anahtarı + CA sertifikası + ilk sunucu sertifikası hâlâ `generate-certs.sh` (bash + `openssl`) ile üretiliyor. Bu betik Windows'ta doğrudan çalışmaz; şu seçenekler gerekir:
+   - **Git Bash / WSL / MSYS2** altında `openssl` ile aynı betiği koşmak, ya da
+   - Windows için `openssl.exe` ile aynı `openssl` komutlarını (CA `genpkey`+`req -x509`, server `genpkey`+`req`+`x509 -req` SAN `server.ext` ile) elle çalıştırmak, ya da
+   - Betiği PowerShell'e veya bir Go alt-komutuna (`guardian-server gen-certs`) port etmek — **henüz yapılmadı.**
+   - Not: Bootstrap sonrası **agent sertifikaları ve sunucu-cert yenileme openssl'siz** (server-side `IssueAgentCert`/`SignAgentCSR`/`RenewServerCert`, madde #15–#16); yani openssl ihtiyacı yalnızca **ilk** CA+server cert üretimiyle sınırlı. CA yenileme de UI dışı (dağıtım gerektirir).
+
+2. **Windows servisi yok.** Sunucu için yalnızca Linux systemd unit'i var (deploy `/usr/local/bin/guardian-server`, kullanıcı `guardian:guardian`). Windows'ta `guardian-server.exe`'yi servis olarak koşmak için `New-Service` / `sc.exe` / `nssm` ile bir servis tanımı + otomatik başlatma **elle** kurulmalı (agent'ta yaptığımız `New-Service` deseni örnek alınabilir, ama sunucu için hazır script yok).
+
+3. **Config yükleme farkı.** Sunucu binary'sinin **config-dosyası okuyucusu yok** — tüm ayarları yalnızca ortam değişkenlerinden alır. Linux'ta bunları systemd `EnvironmentFile=/etc/guardian/server.conf` sağlıyor. Windows'ta systemd olmadığından değişkenlerin **makine/servis düzeyinde env** olarak (veya servis sarmalayıcı üzerinden) verilmesi gerekir. Agent'a #8'de eklenen `config_file.go` benzeri bir yükleyici sunucuya **eklenmedi**; istenirse `GUARDIAN_SERVER_CONFIG` ile dosyadan okuma kolayca portlanabilir.
+
+4. **Veritabanı.** PostgreSQL Windows'ta Docker Desktop veya yerel PostgreSQL ile çalışır; sorun kodda değil, sadece **kurulumu script'lenmedi** (Linux tarafında docker-compose / harici Postgres var).
+
+5. **UI / reverse proxy.** UI dağıtımı Linux nginx'e göre (`/var/www/guardian-ui`, `systemctl reload nginx`). Windows'ta nginx-for-Windows veya IIS reverse-proxy ile aynısı yapılabilir ama **script/doküman yok**.
+
+6. **Deploy dokümanı yok.** Tüm deploy adımları (systemd, `/usr/local/bin`, `/var/www`, `/etc/guardian`) Linux varsayıyor; Windows sunucu için ayrı bir kurulum rehberi yazılmadı.
+
+**Sonuç:** "Windows'ta hem agent hem server" → **agent: destekli**; **server: derlenir ve çalışır ama kurulum/işletim tarafı Linux'a göre; Windows'ta koşmak için yukarıdaki 6 boşluk elle doldurulmalı.** Üretim önerisi şimdilik: **server Linux'ta, agent'lar Linux + Windows karışık.** Windows'ta sunucu resmi desteği istenirse; öncelik sırası (1) cert bootstrap'ı openssl'siz Go alt-komutuna taşımak, (2) sunucu için Windows servis kurulumu, (3) `GUARDIAN_SERVER_CONFIG` dosya yükleyici.
