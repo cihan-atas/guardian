@@ -20,11 +20,31 @@ import (
 type AgentInstaller struct {
 	DB          *sql.DB
 	CA          *services.CA // nil ise enrollment devre dışı (ca.key yok)
-	BinaryPath  string       // servis edilecek guardian-agent binary yolu
+	BinaryPath  string       // servis edilecek guardian-agent (Linux) binary yolu
+	WinBinPath  string       // servis edilecek guardian-agent.exe (Windows) yolu
 	SecretToken string       // GUARDIAN_SECRET_TOKEN (agent.conf'a gömülür)
 	ServerPort  string       // GUARDIAN_SERVER_PORT (agent'ın bağlanacağı)
 	AgentPort   string       // GUARDIAN_AGENT_PORT
 	PublicURL   string       // GUARDIAN_PUBLIC_URL: agent'ların sunucuya eriştiği taban URL
+}
+
+// binaryPathFor, verilen OS için servis edilecek binary yolunu döndürür.
+func (a *AgentInstaller) binaryPathFor(osName string) string {
+	if osName == "windows" {
+		return a.WinBinPath
+	}
+	return a.BinaryPath
+}
+
+// binaryAvailableFor, verilen OS için binary'nin sunucuda mevcut olup
+// olmadığını söyler.
+func (a *AgentInstaller) binaryAvailableFor(osName string) bool {
+	p := a.binaryPathFor(osName)
+	if p == "" {
+		return false
+	}
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
 }
 
 // baseURL, script/komutlarda kullanılacak taban URL'yi döndürür. Öncelik
@@ -64,11 +84,16 @@ func (a *AgentInstaller) GenerateEnrollToken() http.HandlerFunc {
 			return
 		}
 
-		// Opsiyonel: imzalanacak agent sertifikasının geçerlilik süresi (gün).
+		// Opsiyonel: sertifika geçerlilik süresi (gün) + hedef OS (linux/windows).
 		var body struct {
-			ValidityDays int `json:"validity_days"`
+			ValidityDays int    `json:"validity_days"`
+			OS           string `json:"os"`
 		}
 		json.NewDecoder(r.Body).Decode(&body)
+		osName := "linux"
+		if body.OS == "windows" {
+			osName = "windows"
+		}
 
 		token, expiresAt, err := services.CreateEnrollToken(a.DB, serverID, body.ValidityDays)
 		if err != nil {
@@ -78,17 +103,24 @@ func (a *AgentInstaller) GenerateEnrollToken() http.HandlerFunc {
 		services.Record(a.DB, r, services.AuditLog{Action: services.ActionRequestAccess, TargetType: "agent_enroll", TargetID: serverID, Status: "SUCCESS"})
 
 		base := a.baseURL(r)
-		installCmd := fmt.Sprintf(`curl -fsSLk -H "X-Enroll-Token: %s" %s/api/agent/install.sh | sudo bash`, token, base)
+		var installCmd string
+		if osName == "windows" {
+			// PowerShell (yönetici) tek satırlık kurulum.
+			installCmd = fmt.Sprintf(`iwr -UseBasicParsing -SkipCertificateCheck -Headers @{'X-Enroll-Token'='%s'} %s/api/agent/install.ps1 | iex`, token, base)
+		} else {
+			installCmd = fmt.Sprintf(`curl -fsSLk -H "X-Enroll-Token: %s" %s/api/agent/install.sh | sudo bash`, token, base)
+		}
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"token":           token,
-			"expires_at":      expiresAt,
-			"server_id":       serverID,
-			"server_hostname": hostname,
-			"server_ip":       ip,
-			"base_url":        base,
-			"install_command": installCmd,
-			"binary_available": a.binaryAvailable(),
+			"token":            token,
+			"expires_at":       expiresAt,
+			"server_id":        serverID,
+			"server_hostname":  hostname,
+			"server_ip":        ip,
+			"base_url":         base,
+			"os":               osName,
+			"install_command":  installCmd,
+			"binary_available": a.binaryAvailableFor(osName),
 		})
 	}
 }
@@ -176,18 +208,22 @@ func (a *AgentInstaller) ServeCACert() http.HandlerFunc {
 }
 
 // ServeBinary (token): guardian-agent binary'sini döndürür.
-// GET /api/agent/binary
+// GET /api/agent/binary?os=linux|windows
 func (a *AgentInstaller) ServeBinary() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, err := services.ValidateEnrollToken(a.DB, enrollTokenFromRequest(r)); err != nil {
 			http.Error(w, "Kayıt token'ı geçersiz.", http.StatusUnauthorized)
 			return
 		}
-		if !a.binaryAvailable() {
-			http.Error(w, "Agent binary sunucuda bulunamadı. GUARDIAN_AGENT_BINARY_PATH ayarlayın.", http.StatusServiceUnavailable)
+		osName := "linux"
+		if r.URL.Query().Get("os") == "windows" {
+			osName = "windows"
+		}
+		if !a.binaryAvailableFor(osName) {
+			http.Error(w, "Agent binary sunucuda bulunamadı (GUARDIAN_AGENT_BINARY_PATH / _WINDOWS).", http.StatusServiceUnavailable)
 			return
 		}
-		f, err := os.Open(a.BinaryPath)
+		f, err := os.Open(a.binaryPathFor(osName))
 		if err != nil {
 			http.Error(w, "Binary açılamadı.", http.StatusInternalServerError)
 			return
@@ -195,6 +231,64 @@ func (a *AgentInstaller) ServeBinary() http.HandlerFunc {
 		defer f.Close()
 		w.Header().Set("Content-Type", "application/octet-stream")
 		io.Copy(w, f)
+	}
+}
+
+// ServeInstallScriptPS (token): Windows PowerShell kurulum script'ini döndürür.
+// GET /api/agent/install.ps1
+func (a *AgentInstaller) ServeInstallScriptPS() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := enrollTokenFromRequest(r)
+		serverID, err := services.ValidateEnrollToken(a.DB, token)
+		if err != nil {
+			http.Error(w, "# Kayıt token'ı geçersiz veya süresi dolmuş.\n", http.StatusUnauthorized)
+			return
+		}
+		serverHost := a.agentServerHost(r)
+		script := renderInstallScriptPS(a.baseURL(r), serverHost, a.ServerPort, a.AgentPort, a.SecretToken, token, serverID)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write([]byte(script))
+	}
+}
+
+// EnrollBundle (token): sunucu tarafında anahtar üretip imzalar; agent anahtarı,
+// sertifikası ve CA'yı JSON olarak döndürür (openssl gerektirmez, Windows için).
+// POST /api/agent/enroll-bundle
+func (a *AgentInstaller) EnrollBundle() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if a.CA == nil {
+			http.Error(w, "Enrollment devre dışı (ca.key yok).", http.StatusServiceUnavailable)
+			return
+		}
+		token := enrollTokenFromRequest(r)
+		serverID, err := services.ValidateEnrollToken(a.DB, token)
+		if err != nil {
+			http.Error(w, "Kayıt token'ı geçersiz veya süresi dolmuş.", http.StatusUnauthorized)
+			return
+		}
+		var ip string
+		if err := a.DB.QueryRow(`SELECT ip_address FROM servers WHERE id = $1`, serverID).Scan(&ip); err != nil {
+			http.Error(w, "Sunucu bulunamadı.", http.StatusNotFound)
+			return
+		}
+		var ips []net.IP
+		if parsed := net.ParseIP(ip); parsed != nil {
+			ips = append(ips, parsed)
+		}
+		days := services.EnrollTokenValidityDays(a.DB, token)
+		keyPEM, certPEM, err := a.CA.IssueAgentCert(ips, nil, days)
+		if err != nil {
+			http.Error(w, "Sertifika üretilemedi: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		services.MarkEnrollTokenUsed(a.DB, token)
+		services.Record(a.DB, r, services.AuditLog{Action: services.ActionCreateServer, TargetType: "agent_enroll", TargetID: serverID, Status: "SUCCESS"})
+
+		writeJSON(w, http.StatusOK, map[string]string{
+			"agent_key": string(keyPEM),
+			"agent_crt": string(certPEM),
+			"ca_crt":    string(a.CA.CACertPEM()),
+		})
 	}
 }
 

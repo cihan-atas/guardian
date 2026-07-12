@@ -45,6 +45,7 @@ func main() {
 	// Agent oto-kurulum (enrollment) için CA anahtarı + binary + genel URL.
 	caKeyFile := getEnv("TLS_CA_KEY_FILE", "../certs/ca.key")
 	agentBinaryPath := os.Getenv("GUARDIAN_AGENT_BINARY_PATH")
+	agentBinaryPathWin := os.Getenv("GUARDIAN_AGENT_BINARY_PATH_WINDOWS")
 	publicURL := os.Getenv("GUARDIAN_PUBLIC_URL")
 
 	// Bildirim/alarm ayarları artık DB'de tutulur ve UI'dan yönetilir; env
@@ -123,6 +124,7 @@ func main() {
 		DB:          db,
 		CA:          agentCA,
 		BinaryPath:  agentBinaryPath,
+		WinBinPath:  agentBinaryPathWin,
 		SecretToken: secretToken,
 		ServerPort:  serverPort,
 		AgentPort:   agentPort,
@@ -174,7 +176,9 @@ func main() {
 		// Agent kurulum uçları — kayıt (enroll) token'ıyla doğrulanır
 		// (hedef sunucunun admin oturumu yoktur). AgentAuth/AdminAuth uygulanmaz.
 		r.Get("/agent/install.sh", installer.ServeInstallScript())
+		r.Get("/agent/install.ps1", installer.ServeInstallScriptPS())
 		r.Post("/agent/enroll", installer.EnrollAgent())
+		r.Post("/agent/enroll-bundle", installer.EnrollBundle())
 		r.Get("/agent/ca.crt", installer.ServeCACert())
 		r.Get("/agent/binary", installer.ServeBinary())
 

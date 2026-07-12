@@ -30,6 +30,9 @@ export class AgentInstallComponent implements OnInit {
 
   mode: 'manual' | 'ssh' = 'manual';
 
+  // Hedef işletim sistemi.
+  osTarget: 'linux' | 'windows' = 'linux';
+
   // Sertifika geçerlilik süresi (gün).
   readonly validityOptions = [
     { label: '1 yıl', days: 365 },
@@ -66,11 +69,20 @@ export class AgentInstallComponent implements OnInit {
     if (s) this.ssh.host = s.ip_address;
   }
 
+  onOsChange(): void {
+    this.enroll = null;
+    this.sshResult = null;
+    // SSH oto-kurulum yalnızca Linux için; Windows'ta manuel moda geç.
+    if (this.osTarget === 'windows' && this.mode === 'ssh') {
+      this.mode = 'manual';
+    }
+  }
+
   generate(): void {
     if (!this.selectedServerId) { this.toastr.warning('Önce bir sunucu seçin.'); return; }
     this.isGenerating = true;
     this.enroll = null;
-    this.api.generateEnrollToken(this.selectedServerId, this.selectedValidity).subscribe({
+    this.api.generateEnrollToken(this.selectedServerId, this.selectedValidity, this.osTarget).subscribe({
       next: (res) => {
         this.enroll = res;
         this.isGenerating = false;

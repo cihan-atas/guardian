@@ -37,6 +37,10 @@ type Config struct {
 }
 
 func loadConfig() (*Config, error) {
+	// Windows'ta (ve systemd EnvironmentFile kullanılmayan durumlarda) config'i
+	// dosyadan env'e yükle; zaten set edilmiş env değerleri korunur.
+	loadConfigFileIntoEnv()
+
 	serverIDStr := os.Getenv("GUARDIAN_AGENT_SERVER_ID")
 	serverID, _ := strconv.Atoi(serverIDStr)
 

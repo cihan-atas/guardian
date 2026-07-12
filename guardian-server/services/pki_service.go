@@ -3,6 +3,7 @@ package services
 import (
 	"crypto"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -178,6 +179,62 @@ func (c *CA) SignAgentCSR(csrPEM []byte, ips []net.IP, dnsNames []string, validi
 		return nil, fmt.Errorf("sertifika imzalanamadı: %w", err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), nil
+}
+
+// IssueAgentCert, sunucu tarafında yeni bir RSA anahtar çifti üretir ve CA ile
+// imzalanmış bir agent sertifikası döndürür (anahtar + sertifika PEM). Hedefte
+// openssl bulunmayan ortamlar (örn. Windows) için CSR akışına alternatiftir.
+func (c *CA) IssueAgentCert(ips []net.IP, dnsNames []string, validityDays int) (keyPEM, certPEM []byte, err error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, fmt.Errorf("anahtar üretilemedi: %w", err)
+	}
+
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, nil, fmt.Errorf("seri numarası üretilemedi: %w", err)
+	}
+
+	hasLoopback := false
+	for _, ip := range ips {
+		if ip.Equal(net.IPv4(127, 0, 0, 1)) {
+			hasLoopback = true
+			break
+		}
+	}
+	if !hasLoopback {
+		ips = append(ips, net.IPv4(127, 0, 0, 1))
+	}
+
+	cn := "guardian-agent"
+	if len(dnsNames) > 0 {
+		cn = dnsNames[0]
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: cn},
+		NotBefore:             time.Now().Add(-5 * time.Minute),
+		NotAfter:              time.Now().AddDate(0, 0, validityOrDefault(validityDays)),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+		IPAddresses:           ips,
+		DNSNames:              dnsNames,
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.cert, &key.PublicKey, c.key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sertifika imzalanamadı: %w", err)
+	}
+
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("anahtar kodlanamadı: %w", err)
+	}
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	return keyPEM, certPEM, nil
 }
 
 // RenewServerCert, Guardian sunucusunun kendi TLS sertifikasını mevcut anahtarı

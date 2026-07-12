@@ -15,12 +15,22 @@
     </select>
     <p class="text-[11px] text-text-secondary mt-2">Sunucu kayıtlı değilse önce <span class="text-text-main">Sunucular</span> ekranından ekleyin.</p>
 
-    <div class="mt-4">
-      <label class="block text-sm font-medium text-text-secondary mb-1">Sertifika geçerlilik süresi</label>
-      <select [(ngModel)]="selectedValidity"
-              class="w-full sm:w-48 bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
-        <option *ngFor="let v of validityOptions" [ngValue]="v.days">{{ v.label }}</option>
-      </select>
+    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">İşletim sistemi</label>
+        <select [(ngModel)]="osTarget" (ngModelChange)="onOsChange()"
+                class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+          <option value="linux">Linux</option>
+          <option value="windows">Windows</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">Sertifika geçerlilik süresi</label>
+        <select [(ngModel)]="selectedValidity"
+                class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+          <option *ngFor="let v of validityOptions" [ngValue]="v.days">{{ v.label }}</option>
+        </select>
+      </div>
     </div>
   </section>
 
@@ -31,11 +41,12 @@
             [ngClass]="mode === 'manual' ? 'bg-accent text-white' : 'bg-dark-card border border-dark-border text-text-secondary hover:text-text-main'">
       <fa-icon [icon]="faTerminal"></fa-icon> Manuel (komut)
     </button>
-    <button (click)="mode = 'ssh'"
+    <button *ngIf="osTarget === 'linux'" (click)="mode = 'ssh'"
             class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
             [ngClass]="mode === 'ssh' ? 'bg-accent text-white' : 'bg-dark-card border border-dark-border text-text-secondary hover:text-text-main'">
       <fa-icon [icon]="faBolt"></fa-icon> SSH ile otomatik
     </button>
+    <span *ngIf="osTarget === 'windows'" class="text-[11px] text-text-secondary self-center">SSH ile otomatik kurulum yalnızca Linux için; Windows'ta komutu manuel çalıştırın.</span>
   </div>
 
   <!-- MANUEL -->
@@ -44,7 +55,8 @@
       <fa-icon [icon]="faTerminal" class="text-accent"></fa-icon>
       <h2 class="text-base font-semibold text-text-main">Manuel Kurulum</h2>
     </div>
-    <p class="text-xs text-text-secondary">Aşağıdaki komutu <span class="text-text-main">hedef sunucuda</span> root/sudo ile çalıştırın. Script; kullanıcı/dizin/sertifika/systemd dahil her şeyi kurar.</p>
+    <p *ngIf="osTarget === 'linux'" class="text-xs text-text-secondary">Aşağıdaki komutu <span class="text-text-main">hedef sunucuda</span> root/sudo ile çalıştırın. Script; kullanıcı/dizin/sertifika/systemd dahil her şeyi kurar.</p>
+    <p *ngIf="osTarget === 'windows'" class="text-xs text-text-secondary">Aşağıdaki komutu <span class="text-text-main">hedef sunucuda yönetici (Administrator) PowerShell</span>'de çalıştırın. Script; dizin/sertifika/agent.conf/Windows servisi dahil her şeyi kurar. Hedefte OpenSSH Server (sshd) kurulu olmalı.</p>
 
     <button (click)="generate()" [disabled]="isGenerating || !selectedServerId"
             class="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50">

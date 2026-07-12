@@ -53,6 +53,7 @@ services:
       # (script'e servis edilir) ve agent'ların sunucuya eriştiği genel URL.
       TLS_CA_KEY_FILE: /etc/guardian/certs/ca.key
       GUARDIAN_AGENT_BINARY_PATH: ${GUARDIAN_AGENT_BINARY_PATH:-/opt/guardian/guardian-agent}
+      GUARDIAN_AGENT_BINARY_PATH_WINDOWS: ${GUARDIAN_AGENT_BINARY_PATH_WINDOWS:-/opt/guardian/guardian-agent.exe}
       GUARDIAN_PUBLIC_URL: ${GUARDIAN_PUBLIC_URL:-}
     volumes:
       # generate-certs.sh ile oluşturulan sertifika dizini (ca.key dahil).

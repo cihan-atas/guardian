@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -26,7 +27,29 @@ func getAuthorizedKeysPath(username string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("kullanıcı '%s' bulunamadı: %w", username, err)
 	}
+	// Windows'ta yönetici hesapların anahtarları OpenSSH tarafından yalnızca
+	// paylaşımlı administrators_authorized_keys dosyasından okunur. Hangi
+	// kullanıcıların admin sayılacağı GUARDIAN_WINDOWS_ADMIN_USERS (virgüllü)
+	// ile belirtilir. Diğer tüm durumlar per-user dosyayı kullanır.
+	if runtime.GOOS == "windows" && isWindowsAdminUser(username) {
+		pd := os.Getenv("ProgramData")
+		if pd == "" {
+			pd = `C:\ProgramData`
+		}
+		return filepath.Join(pd, "ssh", "administrators_authorized_keys"), nil
+	}
 	return filepath.Join(usr.HomeDir, ".ssh", "authorized_keys"), nil
+}
+
+// isWindowsAdminUser, kullanıcının GUARDIAN_WINDOWS_ADMIN_USERS listesinde olup
+// olmadığını (büyük/küçük harf duyarsız) döndürür.
+func isWindowsAdminUser(username string) bool {
+	for _, u := range strings.Split(os.Getenv("GUARDIAN_WINDOWS_ADMIN_USERS"), ",") {
+		if strings.EqualFold(strings.TrimSpace(u), username) {
+			return true
+		}
+	}
+	return false
 }
 
 // addKeyToSpecificFile, belirtilen bir dosyaya anahtar ekleyen, test edilebilir iç fonksiyondur.

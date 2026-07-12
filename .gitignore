@@ -6,6 +6,8 @@ certs/
 guardian-agent/agent
 guardian-agent/guardian-agent
 guardian-agent/guardian-agent-new
+guardian-agent/guardian-agent.exe
+*.exe
 guardian-server/guardian-server
 guardian-server/guardian-server-new
 guardian-cli/guardian-cli

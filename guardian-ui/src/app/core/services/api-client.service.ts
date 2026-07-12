@@ -284,6 +284,7 @@ export interface EnrollTokenResponse {
   server_hostname: string;
   server_ip: string;
   base_url: string;
+  os?: string;
   install_command: string;
   binary_available: boolean;
 }
@@ -635,9 +636,9 @@ export class ApiClientService {
   }
 
   // Agent kurulumu: bir sunucu için kayıt token'ı + kurulum komutu üret.
-  // validityDays: imzalanacak agent sertifikasının geçerlilik süresi (gün).
-  generateEnrollToken(serverId: number, validityDays?: number): Observable<EnrollTokenResponse> {
-    return this.http.post<EnrollTokenResponse>(`${this.apiUrl}/servers/${serverId}/enroll-token`, { validity_days: validityDays ?? 0 });
+  // validityDays: sertifika geçerlilik süresi (gün); os: linux|windows.
+  generateEnrollToken(serverId: number, validityDays?: number, os: 'linux' | 'windows' = 'linux'): Observable<EnrollTokenResponse> {
+    return this.http.post<EnrollTokenResponse>(`${this.apiUrl}/servers/${serverId}/enroll-token`, { validity_days: validityDays ?? 0, os });
   }
 
   // Agent kurulumu: SSH ile uzaktan kur.

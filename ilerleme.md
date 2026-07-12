@@ -108,10 +108,19 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 
 ---
 
+### 17. Windows agent desteği (2026-07-12)
+- Agent zaten cross-platform (yerel PTY yok; `localhost:22`'ye SSH ile bağlanıp PTY'yi OpenSSH sshd'den ister → ConPTY'yi sshd sağlar). Windows'a temiz cross-compile oluyor.
+- **Agent kodu:** config'i dosyadan okuma (`GUARDIAN_AGENT_CONFIG` / OS varsayılanı — Windows'ta systemd `EnvironmentFile` yok); `getAuthorizedKeysPath` Windows yönetici hesapları için `%ProgramData%\ssh\administrators_authorized_keys` (kimlerin admin olduğu `GUARDIAN_WINDOWS_ADMIN_USERS` ile).
+- **Sunucu:** `CA.IssueAgentCert` server-side anahtar+sertifika üretir (openssl'siz enroll — Windows için); `POST /api/agent/enroll-bundle` (key+crt+ca JSON); `GET /api/agent/install.ps1` (PowerShell kurulum); `GET /api/agent/binary?os=windows` (`GUARDIAN_AGENT_BINARY_PATH_WINDOWS`). enroll-token `os` parametresiyle Linux/Windows kurulum komutu üretir.
+- **PowerShell kurulumu:** ProgramData dizinleri, SSH servis anahtarı, enroll-bundle ile sertifika, `agent.conf`, `guardian-agent.exe` indirme, `New-Service` ile Windows servisi + `GUARDIAN_AGENT_CONFIG` makine env'i.
+- **UI:** Agent Kurulumu'na OS seçici; Windows'ta PowerShell tek satırlık komut; SSH oto-kurulum Linux'a özel (Windows'ta manuel not). `docs/agent-setup-windows.md` eklendi.
+- Not: Linux uçtan uca test edildi; Windows tarafı gerçek bir Windows host'ta doğrulanmalı (bu ortamda runtime test yapılamadı).
+
+---
+
 ## 🗺️ Yol Haritası / Planlanan Özellikler
 
 ### Sırada
-8. **Windows agent desteği** — Windows OpenSSH `authorized_keys` + ConPTY uyarlaması (projenin başındaki çapraz platform hedefi).
 9. **Kayıt saklama politikası** — `session_events` için otomatik temizlik/arşiv zamanlayıcısı (örn. 90 gün).
 10. **Replay'i asciicast dışa aktarma** — kayıtları asciinema formatında indirme (paylaşım/delil).
 11. **2FA (TOTP)** — RBAC üzerine opsiyonel iki adımlı doğrulama (login'de TOTP kodu).
