@@ -88,8 +88,11 @@ GUARDIAN_AGENT_TRUSTED_HOST_KEY=/etc/ssh/ssh_host_ed25519_key.pub
 EOF
 
 say "6/8  Agent binary indiriliyor…"
-$CURLK -H "X-Enroll-Token: ${ENROLL_TOKEN}" "${BASE_URL}/api/agent/binary" -o "$BIN"
-chmod +x "$BIN"
+# Çalışan bir agent varsa binary'nin üzerine doğrudan yazmak "Text file busy"
+# (ETXTBSY) verir; temp'e indirip mv (rename) ile değiştiriyoruz.
+$CURLK -H "X-Enroll-Token: ${ENROLL_TOKEN}" "${BASE_URL}/api/agent/binary" -o "${BIN}.new"
+chmod +x "${BIN}.new"
+mv -f "${BIN}.new" "$BIN"
 
 say "7/8  İzinler ve systemd servisi ayarlanıyor…"
 chown -R guardian:guardian /opt/guardian /etc/guardian
