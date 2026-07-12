@@ -103,7 +103,8 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 
 ### 16. Sertifika süre-sonu göstergesi (2026-07-12)
 - `GET /api/certificates` (admin): CA (`ca.crt`) ve Guardian sunucu sertifikasını (`server.crt`) yerel dosyalardan; her sunucunun **agent sertifikasını** TLS el sıkışmasıyla (`agentclient.PeerCertificate`, `InsecureSkipVerify` ile süresi dolmuş olsa da okunur) — konu/bitiş/kalan-gün bilgisiyle döndürür (`pki_service.ReadCertInfo`).
-- UI: admin'e özel **Sertifikalar** ekranı — CA + server kartları, agent cert tablosu; kalan güne göre renk (>30 yeşil, ≤30 sarı, ≤7/negatif kırmızı). CA ve server cert'inin enrollment ile yenilenmediği not düşülür (bilinen boşluk).
+- UI: admin'e özel **Sertifikalar** ekranı — CA + server kartları, agent cert tablosu; kalan güne göre renk (>30 yeşil, ≤30 sarı, ≤7/negatif kırmızı).
+- **Yenileme + süre seçimi:** İmzalama artık süre parametreli (`SignAgentCSR(..., validityDays)`); enroll token'ına `validity_days` kolonu eklendi. Süre seçenekleri 1/2/5/10 yıl. **Server cert yenileme:** `POST /api/certificates/server/renew` mevcut anahtar + SAN'ları koruyarak seçilen süreyle yeniden imzalar (eski cert `.bak`'lanır), etkin olması için sunucu yeniden başlatılır. **Agent cert yenileme:** Sertifikalar/Agent Kurulumu ekranlarından seçilen süreyle enroll komutu üretilir; hedefte çalıştırılınca çalışan agent kesintisiz güncellenir. CA yenileme bilinçli olarak UI dışında (dağıtım gerektirir; ekranda not).
 
 ---
 

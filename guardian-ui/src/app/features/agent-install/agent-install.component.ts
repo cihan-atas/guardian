@@ -30,6 +30,15 @@ export class AgentInstallComponent implements OnInit {
 
   mode: 'manual' | 'ssh' = 'manual';
 
+  // Sertifika geçerlilik süresi (gün).
+  readonly validityOptions = [
+    { label: '1 yıl', days: 365 },
+    { label: '2 yıl', days: 730 },
+    { label: '5 yıl', days: 1825 },
+    { label: '10 yıl', days: 3650 },
+  ];
+  selectedValidity = 3650;
+
   // Manuel kurulum
   isGenerating = false;
   enroll: EnrollTokenResponse | null = null;
@@ -61,7 +70,7 @@ export class AgentInstallComponent implements OnInit {
     if (!this.selectedServerId) { this.toastr.warning('Önce bir sunucu seçin.'); return; }
     this.isGenerating = true;
     this.enroll = null;
-    this.api.generateEnrollToken(this.selectedServerId).subscribe({
+    this.api.generateEnrollToken(this.selectedServerId, this.selectedValidity).subscribe({
       next: (res) => {
         this.enroll = res;
         this.isGenerating = false;
@@ -90,6 +99,7 @@ export class AgentInstallComponent implements OnInit {
       ssh_user: this.ssh.user.trim(),
       ssh_password: this.ssh.authType === 'password' ? this.ssh.password : undefined,
       ssh_private_key: this.ssh.authType === 'key' ? this.ssh.privateKey : undefined,
+      validity_days: this.selectedValidity,
     }).subscribe({
       next: (res) => {
         this.sshResult = res;

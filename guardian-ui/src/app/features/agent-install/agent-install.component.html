@@ -14,6 +14,14 @@
       <option *ngFor="let s of servers" [ngValue]="s.id">{{ s.hostname }} ({{ s.ip_address }})</option>
     </select>
     <p class="text-[11px] text-text-secondary mt-2">Sunucu kayıtlı değilse önce <span class="text-text-main">Sunucular</span> ekranından ekleyin.</p>
+
+    <div class="mt-4">
+      <label class="block text-sm font-medium text-text-secondary mb-1">Sertifika geçerlilik süresi</label>
+      <select [(ngModel)]="selectedValidity"
+              class="w-full sm:w-48 bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:border-accent">
+        <option *ngFor="let v of validityOptions" [ngValue]="v.days">{{ v.label }}</option>
+      </select>
+    </div>
   </section>
 
   <!-- Mod seçimi -->

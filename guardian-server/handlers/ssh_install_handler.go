@@ -19,6 +19,7 @@ type sshInstallRequest struct {
 	SSHUser    string `json:"ssh_user"`
 	SSHPass    string `json:"ssh_password"`
 	PrivateKey string `json:"ssh_private_key"`
+	Validity   int    `json:"validity_days"`
 }
 
 // SSHInstall (admin): hedef sunucuya SSH ile bağlanıp kurulum script'ini
@@ -98,7 +99,7 @@ func (a *AgentInstaller) SSHInstall() http.HandlerFunc {
 		defer client.Close()
 
 		// Kayıt token'ı üret ve tek satırlık kurulum komutunu oluştur.
-		token, _, err := services.CreateEnrollToken(a.DB, serverID)
+		token, _, err := services.CreateEnrollToken(a.DB, serverID, req.Validity)
 		if err != nil {
 			http.Error(w, "Kayıt token'ı oluşturulamadı.", http.StatusInternalServerError)
 			return

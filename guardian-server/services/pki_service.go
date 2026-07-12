@@ -114,9 +114,20 @@ func (c *CA) CACertPEM() []byte {
 	return c.certPEM
 }
 
+// defaultValidityDays, süre belirtilmediğinde kullanılan sertifika ömrü.
+const defaultValidityDays = 3650
+
+func validityOrDefault(days int) int {
+	if days <= 0 {
+		return defaultValidityDays
+	}
+	return days
+}
+
 // SignAgentCSR, agent'ın ürettiği CSR'ı CA ile imzalar ve verilen IP/DNS
-// SAN'larıyla bir agent sertifikası (PEM) döndürür.
-func (c *CA) SignAgentCSR(csrPEM []byte, ips []net.IP, dnsNames []string) ([]byte, error) {
+// SAN'larıyla bir agent sertifikası (PEM) döndürür. validityDays <= 0 ise
+// varsayılan (10 yıl) kullanılır.
+func (c *CA) SignAgentCSR(csrPEM []byte, ips []net.IP, dnsNames []string, validityDays int) ([]byte, error) {
 	block, _ := pem.Decode(csrPEM)
 	if block == nil {
 		return nil, fmt.Errorf("CSR PEM çözülemedi")
@@ -150,7 +161,7 @@ func (c *CA) SignAgentCSR(csrPEM []byte, ips []net.IP, dnsNames []string) ([]byt
 		SerialNumber:          serial,
 		Subject:               csr.Subject,
 		NotBefore:             time.Now().Add(-5 * time.Minute),
-		NotAfter:              time.Now().AddDate(10, 0, 0),
+		NotAfter:              time.Now().AddDate(0, 0, validityOrDefault(validityDays)),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
@@ -167,4 +178,71 @@ func (c *CA) SignAgentCSR(csrPEM []byte, ips []net.IP, dnsNames []string) ([]byt
 		return nil, fmt.Errorf("sertifika imzalanamadı: %w", err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), nil
+}
+
+// RenewServerCert, Guardian sunucusunun kendi TLS sertifikasını mevcut anahtarı
+// ve SAN'larını (IP/DNS + konu) koruyarak yeniden imzalar ve certPath'e yazar.
+// Anahtar (keyPath) değişmez. Yeni sertifikanın etkin olması için sunucunun
+// yeniden başlatılması gerekir. Yeni sertifikanın CertInfo'sunu döndürür.
+func (c *CA) RenewServerCert(certPath, keyPath string, validityDays int) (*CertInfo, error) {
+	// Mevcut sertifikayı oku (konu + SAN'ları koru).
+	oldPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		return nil, fmt.Errorf("mevcut server sertifikası okunamadı: %w", err)
+	}
+	oldBlock, _ := pem.Decode(oldPEM)
+	if oldBlock == nil {
+		return nil, fmt.Errorf("server sertifikası PEM çözülemedi")
+	}
+	oldCert, err := x509.ParseCertificate(oldBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("server sertifikası parse edilemedi: %w", err)
+	}
+
+	// Mevcut özel anahtarı oku → public key'i yeni sertifikada kullan.
+	keyPEM, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("server anahtarı okunamadı: %w", err)
+	}
+	keyBlock, _ := pem.Decode(keyPEM)
+	if keyBlock == nil {
+		return nil, fmt.Errorf("server anahtarı PEM çözülemedi")
+	}
+	signer, err := parsePrivateKey(keyBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("server anahtarı parse edilemedi: %w", err)
+	}
+
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, fmt.Errorf("seri numarası üretilemedi: %w", err)
+	}
+
+	tmpl := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               oldCert.Subject,
+		NotBefore:             time.Now().Add(-5 * time.Minute),
+		NotAfter:              time.Now().AddDate(0, 0, validityOrDefault(validityDays)),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+		IPAddresses:           oldCert.IPAddresses,
+		DNSNames:              oldCert.DNSNames,
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.cert, signer.Public(), c.key)
+	if err != nil {
+		return nil, fmt.Errorf("server sertifikası imzalanamadı: %w", err)
+	}
+	newPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+
+	// Eski sertifikayı yedekle, yenisini yaz.
+	_ = os.WriteFile(certPath+".bak", oldPEM, 0o640)
+	if err := os.WriteFile(certPath, newPEM, 0o640); err != nil {
+		return nil, fmt.Errorf("yeni server sertifikası yazılamadı: %w", err)
+	}
+
+	newCert, _ := x509.ParseCertificate(der)
+	return CertInfoFromX509(newCert), nil
 }

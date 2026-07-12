@@ -201,8 +201,9 @@ func main() {
 			// Denetim kaydı ekranı (yalnızca admin).
 			r.With(admin).Get("/audit-logs", handlers.ListAuditLogs(db))
 
-			// Sertifika süre-sonu göstergesi (yalnızca admin).
+			// Sertifika süre-sonu göstergesi + server cert yenileme (yalnızca admin).
 			r.With(admin).Get("/certificates", handlers.Certificates(db, ac, caCertFile, certFile))
+			r.With(admin).Post("/certificates/server/renew", handlers.RenewServerCert(db, agentCA, certFile, keyFile))
 
 			// Global komut arama (viewer+).
 			r.Get("/commands/search", handlers.SearchCommands(db))

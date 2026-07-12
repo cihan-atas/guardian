@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -63,7 +64,13 @@ func (a *AgentInstaller) GenerateEnrollToken() http.HandlerFunc {
 			return
 		}
 
-		token, expiresAt, err := services.CreateEnrollToken(a.DB, serverID)
+		// Opsiyonel: imzalanacak agent sertifikasının geçerlilik süresi (gün).
+		var body struct {
+			ValidityDays int `json:"validity_days"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+
+		token, expiresAt, err := services.CreateEnrollToken(a.DB, serverID, body.ValidityDays)
 		if err != nil {
 			http.Error(w, "Kayıt token'ı oluşturulamadı.", http.StatusInternalServerError)
 			return
@@ -134,7 +141,8 @@ func (a *AgentInstaller) EnrollAgent() http.HandlerFunc {
 		if parsed := net.ParseIP(ip); parsed != nil {
 			ips = append(ips, parsed)
 		}
-		certPEM, err := a.CA.SignAgentCSR(csrPEM, ips, nil)
+		validityDays := services.EnrollTokenValidityDays(a.DB, token)
+		certPEM, err := a.CA.SignAgentCSR(csrPEM, ips, nil, validityDays)
 		if err != nil {
 			http.Error(w, "Sertifika imzalanamadı: "+err.Error(), http.StatusBadRequest)
 			return

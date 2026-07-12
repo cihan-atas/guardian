@@ -301,6 +301,7 @@ export interface SSHInstallPayload {
   ssh_user: string;
   ssh_password?: string;
   ssh_private_key?: string;
+  validity_days?: number;
 }
 
 /** Sunucu agent sağlık durumu. */
@@ -628,9 +629,15 @@ export class ApiClientService {
     return this.http.get<CertificatesResponse>(`${this.apiUrl}/certificates`);
   }
 
+  // Guardian sunucu sertifikasını seçilen süreyle yeniden imzala.
+  renewServerCert(validityDays: number): Observable<{ cert: CertInfo; restart_required: boolean }> {
+    return this.http.post<{ cert: CertInfo; restart_required: boolean }>(`${this.apiUrl}/certificates/server/renew`, { validity_days: validityDays });
+  }
+
   // Agent kurulumu: bir sunucu için kayıt token'ı + kurulum komutu üret.
-  generateEnrollToken(serverId: number): Observable<EnrollTokenResponse> {
-    return this.http.post<EnrollTokenResponse>(`${this.apiUrl}/servers/${serverId}/enroll-token`, {});
+  // validityDays: imzalanacak agent sertifikasının geçerlilik süresi (gün).
+  generateEnrollToken(serverId: number, validityDays?: number): Observable<EnrollTokenResponse> {
+    return this.http.post<EnrollTokenResponse>(`${this.apiUrl}/servers/${serverId}/enroll-token`, { validity_days: validityDays ?? 0 });
   }
 
   // Agent kurulumu: SSH ile uzaktan kur.
