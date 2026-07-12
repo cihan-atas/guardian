@@ -140,11 +140,9 @@ func (a *AgentInstaller) EnrollAgent() http.HandlerFunc {
 			return
 		}
 
-		// İmza başarılı → token'ı tüket (tek kullanımlık).
-		if _, err := services.ConsumeEnrollToken(a.DB, token); err != nil {
-			http.Error(w, "Kayıt token'ı tüketilemedi.", http.StatusConflict)
-			return
-		}
+		// İlk kullanımı denetim için işaretle (token TTL boyunca ca.crt + binary
+		// indirmeleri için geçerli kalmalı; bu yüzden geçersiz kılmıyoruz).
+		services.MarkEnrollTokenUsed(a.DB, token)
 		services.Record(a.DB, r, services.AuditLog{Action: services.ActionCreateServer, TargetType: "agent_enroll", TargetID: serverID, Status: "SUCCESS"})
 
 		w.Header().Set("Content-Type", "application/x-pem-file")

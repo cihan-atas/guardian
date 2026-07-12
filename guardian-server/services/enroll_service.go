@@ -61,28 +61,21 @@ func ValidateEnrollToken(db *sql.DB, token string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if usedAt.Valid || time.Now().UTC().After(expiresAt) {
+	// Token TTL boyunca (varsayılan 30 dk) tekrar tekrar kullanılabilir: kurulum
+	// akışı aynı token'la birden çok uç çağırır (install.sh + enroll + ca.crt +
+	// binary). Bu yüzden yalnızca süre dolumuna bakılır; used_at yalnızca denetim
+	// amaçlı işaretlenir, reddetme sebebi değildir.
+	_ = usedAt
+	if time.Now().UTC().After(expiresAt) {
 		return 0, ErrEnrollTokenInvalid
 	}
 	return serverID, nil
 }
 
-// ConsumeEnrollToken, token'ı doğrular ve (yalnızca ilk kez) tüketilmiş olarak
-// işaretler. Sertifika imzalandıktan sonra çağrılır → token tekrar kullanılamaz.
-func ConsumeEnrollToken(db *sql.DB, token string) (int, error) {
-	var serverID int
-	err := db.QueryRow(`
-		UPDATE agent_enroll_tokens SET used_at = now()
-		WHERE token = $1 AND used_at IS NULL AND expires_at > now()
-		RETURNING server_id`, token,
-	).Scan(&serverID)
-	if err == sql.ErrNoRows {
-		return 0, ErrEnrollTokenInvalid
-	}
-	if err != nil {
-		return 0, err
-	}
-	return serverID, nil
+// MarkEnrollTokenUsed, token'ın ilk kullanım zamanını (denetim amaçlı)
+// best-effort işaretler; token'ı geçersiz KILMAZ (TTL boyunca kullanılabilir).
+func MarkEnrollTokenUsed(db *sql.DB, token string) {
+	db.Exec(`UPDATE agent_enroll_tokens SET used_at = now() WHERE token = $1 AND used_at IS NULL`, token)
 }
 
 // PurgeExpiredEnrollTokens, süresi geçmiş token'ları temizler (scheduler).
