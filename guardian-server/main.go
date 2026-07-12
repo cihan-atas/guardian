@@ -289,6 +289,7 @@ func main() {
 				r.With(admin).Get("/", handlers.GetSettings(db))
 				r.With(admin).Put("/", handlers.UpdateSettings(db))
 				r.With(admin).Post("/test", handlers.TestNotification(db))
+				r.With(admin).Get("/retention-preview", handlers.RetentionPreview(db))
 			})
 
 			r.Route("/sessions", func(r chi.Router) {

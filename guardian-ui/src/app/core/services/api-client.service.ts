@@ -223,6 +223,12 @@ export interface NotificationSettings {
   smtp_from: string;
   alert_email_to: string;
   risky_autoaction: 'none' | 'terminate' | 'ban' | string;
+  /** Kayıt saklama süresi (gün). 0 = sınırsız (temizlik kapalı). */
+  retention_days?: number;
+  /** Son temizlik zamanı (RFC3339) — read-only, GET'te döner. */
+  retention_last_run?: string;
+  /** Son temizlikte silinen olay kaydı sayısı — read-only. */
+  retention_last_deleted?: number;
 }
 
 /** Güvenlik uyarısı (riskli komut tespiti). */
@@ -596,6 +602,13 @@ export class ApiClientService {
 
   updateSettings(payload: NotificationSettings): Observable<any> {
     return this.http.put(`${this.apiUrl}/settings`, payload);
+  }
+
+  /** Verilen saklama süresine göre silinecek olay kaydı sayısını döner (önizleme). */
+  getRetentionPreview(days: number): Observable<{ count: number }> {
+    return this.http.get<{ count: number }>(`${this.apiUrl}/settings/retention-preview`, {
+      params: { days: String(days) },
+    });
   }
 
   testNotification(): Observable<any> {

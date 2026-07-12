@@ -4,8 +4,10 @@ import { FormsModule } from '@angular/forms';
 import { ToastrService } from 'ngx-toastr';
 import { ApiClientService, NotificationSettings } from '../../core/services/api-client.service';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import { Subject } from 'rxjs';
+import { debounceTime, switchMap } from 'rxjs/operators';
 import {
-  faGear, faBell, faEnvelope, faTriangleExclamation, faPaperPlane, faSpinner, faSave
+  faGear, faBell, faEnvelope, faTriangleExclamation, faPaperPlane, faSpinner, faSave, faBroom
 } from '@fortawesome/free-solid-svg-icons';
 
 @Component({
@@ -22,11 +24,26 @@ export class SettingsComponent implements OnInit {
   faTest = faPaperPlane;
   faSpinner = faSpinner;
   faSave = faSave;
+  faBroom = faBroom;
 
   isLoading = true;
   isSaving = false;
   isTesting = false;
   smtpPassSet = false;
+
+  // Kayıt saklama önizlemesi (kaç olay kaydı etkilenecek).
+  retentionPreviewCount: number | null = null;
+  retentionLastRun = '';
+  retentionLastDeleted = 0;
+  private retentionPreview$ = new Subject<number>();
+
+  readonly retentionPresets = [
+    { value: 0, label: 'Sınırsız' },
+    { value: 30, label: '30 gün' },
+    { value: 90, label: '90 gün' },
+    { value: 180, label: '180 gün' },
+    { value: 365, label: '1 yıl' },
+  ];
 
   model: NotificationSettings = {
     webhook_url: '',
@@ -37,6 +54,7 @@ export class SettingsComponent implements OnInit {
     smtp_from: '',
     alert_email_to: '',
     risky_autoaction: 'none',
+    retention_days: 0,
   };
 
   readonly autoActions = [
@@ -52,6 +70,16 @@ export class SettingsComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+    // Süre değiştikçe (debounce'lu) önizlemeyi güncelle.
+    this.retentionPreview$
+      .pipe(
+        debounceTime(400),
+        switchMap((days) => this.apiClient.getRetentionPreview(days))
+      )
+      .subscribe({
+        next: (r) => (this.retentionPreviewCount = r.count),
+        error: () => (this.retentionPreviewCount = null),
+      });
   }
 
   load(): void {
@@ -68,8 +96,12 @@ export class SettingsComponent implements OnInit {
           smtp_from: s.smtp_from || '',
           alert_email_to: s.alert_email_to || '',
           risky_autoaction: s.risky_autoaction || 'none',
+          retention_days: s.retention_days ?? 0,
         };
+        this.retentionLastRun = s.retention_last_run || '';
+        this.retentionLastDeleted = s.retention_last_deleted ?? 0;
         this.isLoading = false;
+        this.refreshRetentionPreview();
       },
       error: () => {
         this.toastr.error('Ayarlar yüklenemedi.', 'Hata');
@@ -90,6 +122,9 @@ export class SettingsComponent implements OnInit {
         this.isSaving = false;
         if (this.model.smtp_pass) this.smtpPassSet = true;
         this.model.smtp_pass = '';
+        // Saklama temizliği kayıtta tetiklenir; son-temizlik bilgisini tazelemek
+        // için ayarları yeniden yükle (kısa gecikme purge'ün bitmesini bekler).
+        if (this.retentionDays > 0) setTimeout(() => this.load(), 800);
       },
       error: (err) => {
         this.toastr.error(err.error || 'Ayarlar kaydedilemedi.', 'Hata');
@@ -118,5 +153,30 @@ export class SettingsComponent implements OnInit {
 
   get emailEnabled(): boolean {
     return !!this.model.smtp_host.trim() && !!this.model.alert_email_to.trim();
+  }
+
+  get retentionDays(): number {
+    return this.model.retention_days ?? 0;
+  }
+
+  setRetention(days: number): void {
+    this.model.retention_days = days;
+    this.refreshRetentionPreview();
+  }
+
+  onRetentionInput(): void {
+    let d = Number(this.model.retention_days);
+    if (!Number.isFinite(d) || d < 0) d = 0;
+    this.model.retention_days = Math.floor(d);
+    this.refreshRetentionPreview();
+  }
+
+  refreshRetentionPreview(): void {
+    const d = this.retentionDays;
+    if (d <= 0) {
+      this.retentionPreviewCount = 0;
+      return;
+    }
+    this.retentionPreview$.next(d);
   }
 }

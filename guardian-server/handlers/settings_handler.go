@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 
 	"guardian.com/server/services"
 )
@@ -26,6 +27,11 @@ type settingsDTO struct {
 	SMTPFrom        string `json:"smtp_from"`
 	AlertEmailTo    string `json:"alert_email_to"`
 	RiskyAutoAction string `json:"risky_autoaction"`
+	// Kayıt saklama politikası. RetentionDays 0 = sınırsız (temizlik kapalı).
+	// LastRun/LastDeleted GET'te bilgilendirme amaçlı döner (read-only).
+	RetentionDays        int    `json:"retention_days"`
+	RetentionLastRun     string `json:"retention_last_run,omitempty"`
+	RetentionLastDeleted int64  `json:"retention_last_deleted,omitempty"`
 }
 
 // GetSettings, mevcut ayarları döner (parola maskeli).
@@ -50,6 +56,13 @@ func GetSettings(db *sql.DB) http.HandlerFunc {
 		if dto.RiskyAutoAction == "" {
 			dto.RiskyAutoAction = "none"
 		}
+		if n, err := strconv.Atoi(s[services.SettingRetentionDays]); err == nil && n > 0 {
+			dto.RetentionDays = n
+		}
+		dto.RetentionLastRun = s[services.SettingRetentionLastRun]
+		if n, err := strconv.ParseInt(s[services.SettingRetentionLastDel], 10, 64); err == nil {
+			dto.RetentionLastDeleted = n
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(dto)
 	}
@@ -69,6 +82,11 @@ func UpdateSettings(db *sql.DB) http.HandlerFunc {
 			action = "none"
 		}
 
+		retention := in.RetentionDays
+		if retention < 0 {
+			retention = 0
+		}
+
 		updates := map[string]string{
 			services.SettingWebhookURL:      in.WebhookURL,
 			services.SettingSMTPHost:        in.SMTPHost,
@@ -77,6 +95,7 @@ func UpdateSettings(db *sql.DB) http.HandlerFunc {
 			services.SettingSMTPFrom:        in.SMTPFrom,
 			services.SettingAlertEmailTo:    in.AlertEmailTo,
 			services.SettingRiskyAutoAction: action,
+			services.SettingRetentionDays:   strconv.Itoa(retention),
 		}
 		// Parola yalnızca yeni bir değer girildiyse güncellenir (write-only).
 		if in.SMTPPass != "" {
@@ -97,6 +116,14 @@ func UpdateSettings(db *sql.DB) http.HandlerFunc {
 			services.ApplySettings(s)
 		}
 
+		// Saklama süresi güncellendiğinde temizliği hemen tetikle (best-effort);
+		// böylece kullanıcı 12 saatlik döngüyü beklemeden etkisini görür.
+		go func() {
+			if _, err := services.RunRetention(db); err != nil {
+				log.Printf("[WARN] Kayıt sonrası saklama temizliği başarısız: %v", err)
+			}
+		}()
+
 		services.Record(db, r, services.AuditLog{
 			Action:     "UPDATE_SETTINGS",
 			TargetType: "settings",
@@ -105,6 +132,28 @@ func UpdateSettings(db *sql.DB) http.HandlerFunc {
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
+	}
+}
+
+// RetentionPreview, verilen gün değerine göre silinmeye aday olay kaydı
+// sayısını döner (?days=N). Ayarlar sayfasında "kaç kayıt etkilenecek"
+// önizlemesi için kullanılır; hiçbir şey silmez.
+func RetentionPreview(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		days := 0
+		if v := r.URL.Query().Get("days"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				days = n
+			}
+		}
+		count, err := services.CountPurgeableEvents(db, days)
+		if err != nil {
+			log.Printf("Saklama önizlemesi hesaplanamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int64{"count": count})
 	}
 }
 

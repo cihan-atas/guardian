@@ -28,6 +28,7 @@ const (
 var settingsKeys = []string{
 	SettingWebhookURL, SettingSMTPHost, SettingSMTPPort, SettingSMTPUser,
 	SettingSMTPPass, SettingSMTPFrom, SettingAlertEmailTo, SettingRiskyAutoAction,
+	SettingRetentionDays, SettingRetentionLastRun, SettingRetentionLastDel,
 }
 
 // EnsureSettingsTable, settings tablosunu yoksa oluşturur.

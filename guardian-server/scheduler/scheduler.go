@@ -17,9 +17,12 @@ import (
 
 const (
 	checkInterval = 10 * time.Second
-	statusPending = "pending"
-	statusActive  = "active"
-	statusExpired = "expired"
+	// Kayıt saklama temizliği kural kontrolünden çok daha seyrek çalışır;
+	// aday veri günlük ölçekte biriktiği için 12 saatte bir yeterli.
+	retentionInterval = 12 * time.Hour
+	statusPending     = "pending"
+	statusActive      = "active"
+	statusExpired     = "expired"
 )
 
 // DEĞİŞİKLİK: *agentclient.Client yerine agentclient.AgentCommunicator kullanıyoruz.
@@ -30,8 +33,34 @@ func Start(db *sql.DB, agentClient agentclient.AgentCommunicator) {
 
 	go runChecks(db, agentClient)
 
+	// Kayıt saklama temizliği ayrı, seyrek bir döngüde çalışır.
+	go runRetentionLoop(db)
+
 	for range ticker.C {
 		go runChecks(db, agentClient) // go yu kaldırabilirsin !!!
+	}
+}
+
+// runRetentionLoop, açılışta bir kez ve ardından retentionInterval aralıklarla
+// kayıt saklama temizliğini çalıştırır. Süre 0 (sınırsız) ise servis sessizce
+// hiçbir şey silmez.
+func runRetentionLoop(db *sql.DB) {
+	runRetention(db)
+	ticker := time.NewTicker(retentionInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		runRetention(db)
+	}
+}
+
+func runRetention(db *sql.DB) {
+	deleted, err := services.RunRetention(db)
+	if err != nil {
+		log.Printf("[WARN] Kayıt saklama temizliği başarısız: %v", err)
+		return
+	}
+	if deleted > 0 {
+		log.Printf("🧹 Kayıt saklama: %d eski oturum olayı temizlendi.", deleted)
 	}
 }
 

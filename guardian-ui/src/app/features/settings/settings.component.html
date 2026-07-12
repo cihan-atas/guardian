@@ -98,6 +98,50 @@
     </div>
   </section>
 
+  <!-- Kayıt saklama politikası -->
+  <section class="bg-dark-card rounded-xl border border-dark-border p-6">
+    <div class="flex items-center gap-2 mb-1">
+      <fa-icon [icon]="faBroom" class="text-accent"></fa-icon>
+      <h2 class="text-base font-semibold text-text-main">Kayıt Saklama Politikası</h2>
+      <span class="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full"
+            [ngClass]="retentionDays > 0 ? 'bg-success-500/10 text-success-400' : 'bg-dark-interactive text-text-secondary'">
+        {{ retentionDays > 0 ? retentionDays + ' gün' : 'Sınırsız' }}
+      </span>
+    </div>
+    <p class="text-xs text-text-secondary mb-4">
+      Bitmiş oturumların <span class="text-text-main font-medium">olay/replay kayıtları</span> belirtilen süreden sonra otomatik silinir (12 saatte bir).
+      Oturum özet bilgileri (kullanıcı, sunucu, süre, durum) <span class="text-text-main font-medium">audit için korunur</span>.
+      <span class="text-text-main font-medium">Sınırsız</span> seçilirse hiçbir kayıt silinmez.
+    </p>
+
+    <div class="flex flex-wrap gap-2 mb-4">
+      <button *ngFor="let p of retentionPresets" type="button" (click)="setRetention(p.value)"
+              class="text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors"
+              [ngClass]="retentionDays === p.value ? 'border-accent bg-accent/5 text-text-main' : 'border-dark-border text-text-secondary hover:border-dark-interactive'">
+        {{ p.label }}
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1">Özel süre (gün) — 0 = sınırsız</label>
+        <input type="number" min="0" step="1" [(ngModel)]="model.retention_days" (ngModelChange)="onRetentionInput()"
+               class="w-full bg-dark-main border border-dark-border rounded-lg px-3 py-2 text-sm text-text-main font-mono focus:outline-none focus:border-accent">
+      </div>
+      <div class="text-sm text-text-secondary">
+        <span *ngIf="retentionDays > 0">
+          Şu an <span class="text-danger-300 font-semibold">{{ retentionPreviewCount ?? '…' }}</span> olay kaydı bu süreyi aşıyor
+          <span class="text-text-secondary">(kaydedince temizlenir).</span>
+        </span>
+        <span *ngIf="retentionDays === 0">Otomatik temizlik kapalı; tüm kayıtlar süresiz saklanır.</span>
+      </div>
+    </div>
+
+    <p *ngIf="retentionLastRun" class="text-[11px] text-text-secondary mt-3">
+      Son temizlik: {{ retentionLastRun | date:'dd.MM.yyyy HH:mm' }} — {{ retentionLastDeleted }} kayıt silindi.
+    </p>
+  </section>
+
   <!-- Aksiyonlar -->
   <div class="flex items-center gap-3">
     <button (click)="save()" [disabled]="isSaving"

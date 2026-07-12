@@ -116,12 +116,18 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 - **UI:** Agent Kurulumu'na OS seçici; Windows'ta PowerShell tek satırlık komut; SSH oto-kurulum Linux'a özel (Windows'ta manuel not). `docs/agent-setup-windows.md` eklendi.
 - Not: Linux uçtan uca test edildi; Windows tarafı gerçek bir Windows host'ta doğrulanmalı (bu ortamda runtime test yapılamadı).
 
+### 18. Kayıt saklama politikası (2026-07-12)
+- Bitmiş oturumların hacimli olay/replay akışı (`session_events`) yapılandırılabilir süre sonra otomatik silinir; oturum özet satırları (kullanıcı/sunucu/süre/durum) audit için **korunur**. `0 = sınırsız` (temizlik kapalı).
+- **Servis:** `services/retention_service.go` — `RetentionDays`, `CountPurgeableEvents` (önizleme), `PurgeOldSessionEvents` (bitmiş + `end_time` süresi geçmiş oturumların olayları), `RunRetention` (temizlik + `retention_last_run`/`retention_last_deleted` ayarlarına yazma). Süre `settings.retention_days`'te.
+- **Scheduler:** ayrı seyrek döngü (`runRetentionLoop`, 12 saatte bir + açılışta bir kez).
+- **API:** `GET /api/settings/retention-preview?days=N` (silinecek kayıt sayısı önizlemesi); `GET/PUT /api/settings` retention alanlarını taşır. Ayarlar kaydedilince temizlik hemen tetiklenir (best-effort goroutine).
+- **UI:** Ayarlar'da "Kayıt Saklama Politikası" bölümü — süre ön ayarları (Sınırsız/30/90/180/365 gün) + özel gün girişi, canlı "kaç kayıt etkilenecek" önizlemesi (400ms debounce), son-temizlik bilgisi.
+
 ---
 
 ## 🗺️ Yol Haritası / Planlanan Özellikler
 
 ### Sırada
-9. **Kayıt saklama politikası** — `session_events` için otomatik temizlik/arşiv zamanlayıcısı (örn. 90 gün).
 10. **Replay'i asciicast dışa aktarma** — kayıtları asciinema formatında indirme (paylaşım/delil).
 11. **2FA (TOTP)** — RBAC üzerine opsiyonel iki adımlı doğrulama (login'de TOTP kodu).
 
