@@ -13,6 +13,44 @@ import (
 	"time"
 )
 
+// CertInfo, bir sertifikanın özet bilgisi (UI süre-sonu göstergesi için).
+type CertInfo struct {
+	Subject   string    `json:"subject"`
+	Issuer    string    `json:"issuer"`
+	NotBefore time.Time `json:"not_before"`
+	NotAfter  time.Time `json:"not_after"`
+	DaysLeft  int       `json:"days_left"`
+}
+
+// CertInfoFromX509, bir sertifikadan CertInfo üretir (kalan gün dahil).
+func CertInfoFromX509(c *x509.Certificate) *CertInfo {
+	daysLeft := int(time.Until(c.NotAfter).Hours() / 24)
+	return &CertInfo{
+		Subject:   c.Subject.CommonName,
+		Issuer:    c.Issuer.CommonName,
+		NotBefore: c.NotBefore,
+		NotAfter:  c.NotAfter,
+		DaysLeft:  daysLeft,
+	}
+}
+
+// ReadCertInfo, PEM sertifika dosyasını okuyup CertInfo döndürür.
+func ReadCertInfo(path string) (*CertInfo, error) {
+	pemBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("sertifika okunamadı (%s): %w", path, err)
+	}
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return nil, fmt.Errorf("sertifika PEM çözülemedi (%s)", path)
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("sertifika parse edilemedi (%s): %w", path, err)
+	}
+	return CertInfoFromX509(cert), nil
+}
+
 // CA, agent sertifikalarını imzalamak için CA cert+anahtarını tutar.
 // ca.key sunucu host'unda (yalnızca root okuyabilecek şekilde) bulunmalıdır;
 // yoksa enrollment devre dışı kalır.

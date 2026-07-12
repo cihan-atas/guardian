@@ -249,6 +249,33 @@ export interface CommandMatch {
   status: string;
 }
 
+/** Bir sertifikanın süre-sonu özeti. */
+export interface CertInfo {
+  subject: string;
+  issuer: string;
+  not_before: string;
+  not_after: string;
+  days_left: number;
+}
+
+/** Bir sunucunun agent sertifikası durumu. */
+export interface AgentCertInfo {
+  server_id: number;
+  hostname: string;
+  ip_address: string;
+  online: boolean;
+  cert?: CertInfo;
+}
+
+/** GET /api/certificates yanıtı. */
+export interface CertificatesResponse {
+  ca?: CertInfo;
+  ca_error?: string;
+  server?: CertInfo;
+  server_error?: string;
+  agents?: AgentCertInfo[];
+}
+
 /** Agent kayıt token'ı + kurulum komutu yanıtı. */
 export interface EnrollTokenResponse {
   token: string;
@@ -594,6 +621,11 @@ export class ApiClientService {
   // Global komut arama (tüm oturumlarda).
   searchCommands(q: string, limit = 100): Observable<CommandMatch[]> {
     return this.http.get<CommandMatch[]>(`${this.apiUrl}/commands/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+  }
+
+  // Sertifika süre-sonu göstergesi (CA + server + agent cert'leri).
+  getCertificates(): Observable<CertificatesResponse> {
+    return this.http.get<CertificatesResponse>(`${this.apiUrl}/certificates`);
   }
 
   // Agent kurulumu: bir sunucu için kayıt token'ı + kurulum komutu üret.

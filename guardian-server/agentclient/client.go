@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -106,6 +107,23 @@ func (c *Client) Ping(ip string) error {
 		return fmt.Errorf("agent %s beklenmeyen durum: %s", ip, resp.Status)
 	}
 	return nil
+}
+
+// PeerCertificate, agent'a TLS el sıkışması yapıp sunduğu yaprak (leaf)
+// sertifikayı döndürür. Süresi dolmuş/geçersiz sertifikaları da okuyabilmek
+// için doğrulama atlanır (InsecureSkipVerify) — amaç yalnızca süre-sonu bilgisi.
+func (c *Client) PeerCertificate(ip string) (*x509.Certificate, error) {
+	dialer := &net.Dialer{Timeout: 3 * time.Second}
+	conn, err := tls.DialWithDialer(dialer, "tcp", ip+":"+c.agentPort, &tls.Config{InsecureSkipVerify: true})
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	certs := conn.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		return nil, fmt.Errorf("agent sertifika sunmadı")
+	}
+	return certs[0], nil
 }
 
 func (c *Client) ValidateUser(ip, username string) error {

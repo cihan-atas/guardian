@@ -101,6 +101,10 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 - **SSH oto-kurulum:** Sunucu, verilen SSH bilgisiyle (parola/özel anahtar) hedefe `x/crypto/ssh` ile bağlanıp aynı komutu uzaktan çalıştırır; çıktı UI'ya döner. Kimlik bilgileri saklanmaz.
 - **UI:** admin'e özel **Agent Kurulumu** ekranı (sunucu seç, Manuel/SSH sekmeleri, komut kopyalama, çıktı). Yeni env: `TLS_CA_KEY_FILE`, `GUARDIAN_AGENT_BINARY_PATH`, `GUARDIAN_PUBLIC_URL` (.env.example + docker-compose belgelendi).
 
+### 16. Sertifika süre-sonu göstergesi (2026-07-12)
+- `GET /api/certificates` (admin): CA (`ca.crt`) ve Guardian sunucu sertifikasını (`server.crt`) yerel dosyalardan; her sunucunun **agent sertifikasını** TLS el sıkışmasıyla (`agentclient.PeerCertificate`, `InsecureSkipVerify` ile süresi dolmuş olsa da okunur) — konu/bitiş/kalan-gün bilgisiyle döndürür (`pki_service.ReadCertInfo`).
+- UI: admin'e özel **Sertifikalar** ekranı — CA + server kartları, agent cert tablosu; kalan güne göre renk (>30 yeşil, ≤30 sarı, ≤7/negatif kırmızı). CA ve server cert'inin enrollment ile yenilenmediği not düşülür (bilinen boşluk).
+
 ---
 
 ## 🗺️ Yol Haritası / Planlanan Özellikler

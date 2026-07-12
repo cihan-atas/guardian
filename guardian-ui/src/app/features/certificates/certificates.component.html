@@ -1,0 +1,104 @@
+<header class="flex flex-wrap items-end justify-between gap-4 mb-6">
+  <div>
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1">Güvenlik</p>
+    <h1 class="text-2xl font-bold text-text-main tracking-tight">Sertifikalar</h1>
+    <p class="mt-1 text-sm text-text-secondary">CA, Guardian sunucusu ve agent sertifikalarının süre-sonu durumu. Yaklaşan bitişler kırmızı/sarı gösterilir.</p>
+  </div>
+  <button (click)="load()" [disabled]="isLoading"
+          class="w-9 h-9 flex items-center justify-center rounded-full bg-dark-card border border-dark-border text-text-secondary hover:text-accent hover:border-accent transition-colors disabled:opacity-50"
+          title="Yenile">
+    <fa-icon [icon]="faSync" [class.animate-spin]="isLoading"></fa-icon>
+  </button>
+</header>
+
+<div *ngIf="isLoading" class="text-center text-text-secondary py-16">
+  <fa-icon [icon]="faSpinner" class="fa-spin text-3xl text-accent"></fa-icon>
+</div>
+
+<div *ngIf="!isLoading && data" class="space-y-6">
+  <!-- CA + Server kartları -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <!-- CA -->
+    <section class="bg-dark-card rounded-xl border border-dark-border p-6">
+      <div class="flex items-center gap-2 mb-3">
+        <fa-icon [icon]="faShield" class="text-accent"></fa-icon>
+        <h2 class="text-base font-semibold text-text-main">Kök Sertifika (CA)</h2>
+      </div>
+      <div *ngIf="data.ca; else caErr" class="space-y-1.5 text-sm">
+        <div class="flex justify-between"><span class="text-text-secondary">Konu</span><span class="text-text-main font-mono text-xs">{{ data.ca.subject || '—' }}</span></div>
+        <div class="flex justify-between"><span class="text-text-secondary">Bitiş</span><span class="text-text-main">{{ data.ca.not_after | date:'dd.MM.yyyy' }}</span></div>
+        <div class="flex justify-between items-center">
+          <span class="text-text-secondary">Kalan</span>
+          <span class="font-semibold" [ngClass]="toneClass(data.ca.days_left)">
+            <fa-icon *ngIf="tone(data.ca.days_left) !== 'ok'" [icon]="faWarn" class="mr-1"></fa-icon>{{ daysLabel(data.ca) }}
+          </span>
+        </div>
+        <p class="text-[11px] text-text-secondary pt-2 border-t border-dark-border mt-2">CA biterse tüm sertifikalar geçersiz olur; yenileme generate-certs.sh + tüm agent'lara yeni ca.crt dağıtımı gerektirir.</p>
+      </div>
+      <ng-template #caErr><p class="text-sm text-danger-400">{{ data.ca_error || 'CA sertifikası okunamadı.' }}</p></ng-template>
+    </section>
+
+    <!-- Server -->
+    <section class="bg-dark-card rounded-xl border border-dark-border p-6">
+      <div class="flex items-center gap-2 mb-3">
+        <fa-icon [icon]="faCert" class="text-accent"></fa-icon>
+        <h2 class="text-base font-semibold text-text-main">Guardian Sunucu Sertifikası</h2>
+      </div>
+      <div *ngIf="data.server; else srvErr" class="space-y-1.5 text-sm">
+        <div class="flex justify-between"><span class="text-text-secondary">Konu</span><span class="text-text-main font-mono text-xs">{{ data.server.subject || '—' }}</span></div>
+        <div class="flex justify-between"><span class="text-text-secondary">Bitiş</span><span class="text-text-main">{{ data.server.not_after | date:'dd.MM.yyyy' }}</span></div>
+        <div class="flex justify-between items-center">
+          <span class="text-text-secondary">Kalan</span>
+          <span class="font-semibold" [ngClass]="toneClass(data.server.days_left)">
+            <fa-icon *ngIf="tone(data.server.days_left) !== 'ok'" [icon]="faWarn" class="mr-1"></fa-icon>{{ daysLabel(data.server) }}
+          </span>
+        </div>
+        <p class="text-[11px] text-text-secondary pt-2 border-t border-dark-border mt-2">Server cert'i enrollment ile yenilenmez; bitişte manuel yenileme gerekir.</p>
+      </div>
+      <ng-template #srvErr><p class="text-sm text-danger-400">{{ data.server_error || 'Server sertifikası okunamadı.' }}</p></ng-template>
+    </section>
+  </div>
+
+  <!-- Agent sertifikaları -->
+  <section class="bg-dark-card rounded-xl border border-dark-border overflow-hidden">
+    <div class="px-6 py-4 border-b border-dark-border flex items-center gap-2">
+      <fa-icon [icon]="faServer" class="text-accent"></fa-icon>
+      <h2 class="text-base font-semibold text-text-main">Agent Sertifikaları</h2>
+      <span class="text-[11px] text-text-secondary ml-2">(yalnızca çevrimiçi agent'ların sertifikası okunabilir)</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr class="bg-dark-main/60 text-text-secondary text-[11px] uppercase tracking-wider">
+            <th class="text-left font-semibold px-4 py-3">Sunucu</th>
+            <th class="text-left font-semibold px-4 py-3">Durum</th>
+            <th class="text-left font-semibold px-4 py-3">Bitiş</th>
+            <th class="text-left font-semibold px-4 py-3">Kalan</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-dark-border">
+          <tr *ngFor="let a of data.agents" class="hover:bg-dark-interactive/40 transition-colors">
+            <td class="px-4 py-3">
+              <span class="font-medium text-text-main">{{ a.hostname }}</span>
+              <span class="text-[11px] text-text-secondary font-mono block">{{ a.ip_address }}</span>
+            </td>
+            <td class="px-4 py-3">
+              <span *ngIf="a.online" class="text-xs font-semibold text-success-400">Çevrimiçi</span>
+              <span *ngIf="!a.online" class="text-xs font-semibold text-text-secondary">Çevrimdışı</span>
+            </td>
+            <td class="px-4 py-3 text-text-secondary">{{ a.cert ? (a.cert.not_after | date:'dd.MM.yyyy') : '—' }}</td>
+            <td class="px-4 py-3">
+              <span *ngIf="a.cert" class="font-semibold" [ngClass]="toneClass(a.cert.days_left)">
+                <fa-icon *ngIf="tone(a.cert.days_left) !== 'ok'" [icon]="faWarn" class="mr-1"></fa-icon>{{ daysLabel(a.cert) }}
+              </span>
+              <span *ngIf="!a.cert" class="text-text-secondary">—</span>
+            </td>
+          </tr>
+          <tr *ngIf="!data.agents || data.agents.length === 0">
+            <td colspan="4" class="text-center py-10 text-text-secondary">Kayıtlı sunucu yok.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
