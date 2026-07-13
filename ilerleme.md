@@ -2,7 +2,8 @@
 
 > Bu dosya, projede yapılan çalışmaları ve bilinen eksikleri takip etmek için tutulur. Son güncelleme: 2026-07-13.
 >
-> **Sonraya bırakılan işler:** (1) `generate-certs.sh` interaktif akış şüphesi, (2) `cols`/`rows` migration, (3) CLI ↔ UI özellik paritesi denetimi. Detaylar için "Yol Haritası → Sonraya bırakılanlar" ve "Kalan Eksikler → Diğer" bölümlerine bakın.
+> **2026-07-13 tamamlananlar (madde #22):** generate-certs.sh sağlamlaştırma, cols/rows migration, CLI↔UI paritesi, Windows sunucu desteği (config yükleyici + gen-certs alt-komutu + doküman/script), guardian-agent ek testleri.
+> **Kalan (harici ortam / daha büyük iş):** audit aynı-transaction bütünlüğü, agent SSH/proxy/WS uçtan uca testi, Windows agent+server runtime doğrulaması (gerçek Windows host). Detay: "Yapılacaklar → Sonraya".
 
 ## Proje Özeti
 
@@ -148,6 +149,16 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 - **Uyumluluk:** `GUARDIAN_SECRET_TOKEN` hem sunucuda hem ajanda artık **opsiyonel** (yoksa yalnızca mTLS). Sertifikalar zaten hem `serverAuth` hem `clientAuth` EKU'ya sahip (Go ile üretilenler) veya EKU kısıtı yok (bootstrap) → mTLS iki yönde de çalışır. Not: `agent.conf` içindeki token (root-only 0600) zararsız yedek olarak kalır; tüm ajanlar yenilendikten sonra kaldırılabilir.
 - **Test:** `handlers/agent_auth_middleware_test.go` — gerçek TLS el sıkışmasıyla: (1) mTLS istemci sertifikası kabul, (2) sertifikasız+token'sız 401, (3) token yedeği (doğru→200, yanlış→403). Ayrıca `TestMain` DB yokken artık paketi öldürmüyor (DB testleri `requireDB` ile atlanıyor), böylece DB'siz ortamda saf mantık testleri çalışabiliyor.
 
+### 22. CLI paritesi + Windows sunucu desteği + cert script sağlamlaştırma (2026-07-13, paralel alt-ajanlarla)
+Dört bağımsız modülde paralel çalışıldı; her biri kendi modülünde derleme/test ile doğrulandı.
+
+- **CLI ↔ UI paritesi** (`guardian-cli`): UI'daki yönetim yeteneklerinin CLI karşılıkları eklendi — yönetici CRUD, erişim talepleri (liste/onay/red), anahtar yasakla/kaldır, gösterge özeti (`stats`), güvenlik uyarıları, ayarlar (görüntüle/güncelle), test bildirimi, denetim kaydı, global komut arama, sertifikalar + sunucu-cert yenileme, agent sağlık durumu, agent `enroll` komutu, oturum asciicast dışa aktarma, `whoami`, parola değiştir. Yeni `cmd/*.go` dosyaları + `client.go` API metodları + 8 httptest testi. **Bilinçli kapsam dışı:** 2FA QR/interaktif akış, canlı terminal izleme (görsel), `ssh-install` (kimlik-sızması riski; yerine güvenli `enroll`).
+- **Windows sunucu desteği (kod)** (`guardian-server`): (1) `GUARDIAN_SERVER_CONFIG` dosya yükleyici (`config_file.go`, agent deseniyle aynı; Windows'ta systemd `EnvironmentFile` yok). (2) openssl'siz `guardian-server gen-certs` alt-komutu (`gencerts.go`, crypto/x509 ile CA + SAN'lı sunucu cert; `--force` koruması, `GUARDIAN_CERT_HOSTS`). (3) `sessions.cols/rows` için idempotent açılış migration'ı (`EnsureSessionColumns`). (4) `websocket_handler_test.go` (AdminWSAuth DB'siz reddetme yolları).
+- **generate-certs.sh sağlamlaştırma** (script): interaktif akış kök nedeni giderildi — `read -n 1` pipe'ta satır kaydırıp CA/Server alanlarını karıştırıyordu. Alanlar artık `ask()` ile env>TTY>varsayılan önceliğinde alınıyor; non-interactive'de alan karışması imkansız. `-subj` ile non-interactive DN, idempotent üzerine-yazma koruması, argüman ayrıştırma. `openssl verify` ile uçtan uca doğrulandı.
+- **Windows sunucu dokümanı/scripti** (`docs`): `docs/server-setup-windows.md` (cert bootstrap, `GUARDIAN_SERVER_CONFIG`, PostgreSQL, Windows servisi, nginx/IIS reverse-proxy) + `scripts/install-server-windows.ps1` (servis kurulumu).
+- **guardian-agent ek testleri** (`guardian-agent`): 18 yeni birim testi (getHostKey, isWindowsAdminUser/defaultAgentConfigPath/getAuthorizedKeysPath, handler hata yolları, websocketWriter, authorized_keys güvenlik değişmezleri). Üretim kodu değişmedi.
+- **Doğrulama:** server/agent/cli linux derleme + testler geçiyor; server ve agent Windows cross-compile OK.
+
 ---
 
 ## 🗺️ Yol Haritası / Planlanan Özellikler
@@ -172,12 +183,12 @@ Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 
 10. ~~`guardian-ui` gerçek mantık testleri (iskelet spec'ler yerine).~~ ✅ **Tamam (2026-07-13).** 11 iskelet "should create" spec'i silindi; 4 gerçek spec eklendi (time-utils, status-labels, AuthService, authInterceptor) — 32 test geçiyor.
 11. ~~`guardian-server` auth/websocket/hub middleware testleri.~~ ✅ **Tamam (2026-07-13).** `agent_auth_middleware_test.go` (mTLS/token), `auth_middleware_test.go` (bearerToken/AdminAuth/RequireRole), `hub_test.go` (yayın yönlendirme + unregister).
 
-### Sonraya bırakılanlar (2026-07-13'te kaydedildi, ileride yapılacak)
-Aşağıdaki üç iş bilinçli olarak ertelendi; sırası gelince ele alınacak:
+### Sonraya bırakılanlar → ✅ TAMAMLANDI (2026-07-13, madde #22)
+Aşağıdaki üç iş 2026-07-13'te alt-ajanlarla tamamlandı:
 
-- ⏳ **`generate-certs.sh` şüphesi.** İnteraktif akışta prompt sırasıyla ilgili gözlemlenen tuhaf davranışın (CA/Server alanlarının karışması) kök nedeni araştırılacak. (Bkz. "Kalan Eksikler" #12.)
-- ⏳ **`cols`/`rows` migration.** Eski deploy'larda `sessions` tablosuna `cols`/`rows` kolonlarının eklenmesi için düzgün bir migration yolu (idempotent `ADD COLUMN IF NOT EXISTS` veya otomatik migration) sağlanacak. (Bkz. "Kalan Eksikler" #13.)
-- ⏳ **CLI ↔ UI özellik paritesi kontrolü.** Projede "CLI ile UI'daki her şeyin yapılabilmesi" vaat edilmişti. UI'daki tüm yeteneklerin (sunucu/kullanıcı/anahtar/kural CRUD, oturum listeleme/sonlandırma, erişim talepleri onay akışı, anahtar yasaklama, denetim kaydı, komut arama, ayarlar/bildirim, RBAC yönetici yönetimi, agent kurulumu, sertifika yönetimi, 2FA, kayıt saklama, asciicast dışa aktarma vb.) CLI'da karşılığı olup olmadığı madde madde denetlenecek; eksikler listelenip CLI'a eklenecek. Bu denetim henüz **yapılmadı**.
+- ✅ **`generate-certs.sh` şüphesi.** Kök neden bulundu (`read -n 1` pipe'ta satır kaydırıyordu) ve giderildi; betik non-interactive'de alan karışması yapmayacak şekilde sağlamlaştırıldı.
+- ✅ **`cols`/`rows` migration.** Sunucu açılışında idempotent `EnsureSessionColumns` (`ADD COLUMN IF NOT EXISTS`) eklendi.
+- ✅ **CLI ↔ UI özellik paritesi.** Denetlendi; eksik komutlar CLI'a eklendi (2FA/canlı-terminal/ssh-install bilinçli kapsam dışı).
 
 ---
 
@@ -185,14 +196,14 @@ Aşağıdaki üç iş bilinçli olarak ertelendi; sırası gelince ele alınacak
 
 > Kalan/ertelenen işlerin aktif takip listesi. Durum: ⏳ bekliyor · 🔄 devam · ✅ bitti.
 
-### Şu an paralel yürütülenler (2026-07-13, alt-ajanlarla)
-- 🔄 **CLI ↔ UI özellik paritesi** — UI'daki tüm yeteneklerin CLI karşılığı denetlenip eksikler CLI'a eklenecek. *(guardian-cli)*
-- 🔄 **Windows sunucu desteği (kod tarafı)** — `GUARDIAN_SERVER_CONFIG` dosya yükleyici + openssl'siz `gen-certs` Go alt-komutu. *(guardian-server)*
-- 🔄 **`cols`/`rows` migration** — sunucu açılışında idempotent otomatik migration + `schema.sql`. *(guardian-server)*
-- 🔄 **`websocket_handler` testleri** — DB gerektirmeyen doğrulama yolları. *(guardian-server)*
-- 🔄 **`generate-certs.sh` şüphesi** — interaktif akış kök nedeni + düzeltme. *(script)*
-- 🔄 **Windows sunucu doküman/scriptleri** — servis kurulumu, PostgreSQL, reverse-proxy, deploy rehberi. *(docs)*
-- 🔄 **guardian-agent ek birim testleri** — canlı SSH gerektirmeyen saf mantık. *(guardian-agent)*
+### Tamamlananlar (2026-07-13, alt-ajanlarla — bkz. madde #22)
+- ✅ **CLI ↔ UI özellik paritesi** — eksik komutlar CLI'a eklendi. *(guardian-cli)*
+- ✅ **Windows sunucu desteği (kod tarafı)** — `GUARDIAN_SERVER_CONFIG` yükleyici + openssl'siz `gen-certs` alt-komutu. *(guardian-server)*
+- ✅ **`cols`/`rows` migration** — idempotent açılış migration'ı (`EnsureSessionColumns`). *(guardian-server)*
+- ✅ **`websocket_handler` testleri** — AdminWSAuth DB'siz reddetme yolları. *(guardian-server)*
+- ✅ **`generate-certs.sh` şüphesi** — kök neden (read -n 1 satır kaydırması) giderildi. *(script)*
+- ✅ **Windows sunucu doküman/scriptleri** — `docs/server-setup-windows.md` + `scripts/install-server-windows.ps1`. *(docs)*
+- ✅ **guardian-agent ek birim testleri** — 18 yeni test. *(guardian-agent)*
 
 ### Sonraya (daha büyük / harici ortam gerektiren)
 - ⏳ **Audit aynı-transaction bütünlüğü** — mutasyon + audit tek DB transaction'ında (şu an senkron ama ayrı yazım).
@@ -221,14 +232,13 @@ Aşağıdaki üç iş bilinçli olarak ertelendi; sırası gelince ele alınacak
 11. ~~`guardian-server`: auth/agent_auth/websocket/hub middleware testleri yok~~ — ✅ **BÜYÜK ÖLÇÜDE ÇÖZÜLDÜ (2026-07-13).** `agent_auth_middleware_test.go` (mTLS kabul / token yedeği / reddetme, gerçek TLS), `auth_middleware_test.go` (`bearerToken` ayrıştırma, `AdminAuth` token'sız 401, `RequireRole` kimliksiz/yetersiz/yeterli), `hub_test.go` (yayın yalnızca eşleşen oturuma, unregister sonrası teslimat yok). Ayrıca test DB olmayan ortamda `handlers` paketi artık `requireDB` ile DB testlerini atlayıp DB'siz testleri koşabiliyor. Not: `websocket_handler.go` uçtan uca WS akışı hâlâ birim testsiz (canlı bağlantı gerektiriyor).
 
 ### Diğer
-12. ⏳ **(SONRAYA BIRAKILDI — 2026-07-13)** `generate-certs.sh` betiğinde interaktif akışta prompt sırasıyla ilgili şüpheli bir davranış gözlemlendi (test sırasında non-interactive girdi verilince CA/Server alanları beklenmedik şekilde karıştı) — kök neden araştırılmadı, betik elle/interaktif kullanıldığında sorun olmayabilir ama doğrulanmadı. **Kök neden ileride araştırılacak.**
-13. ⏳ **(SONRAYA BIRAKILDI — 2026-07-13)** Mevcut (bu değişiklikten önce) deploy edilmiş sunucularda `sessions` tablosuna `cols`/`rows` kolonlarının manuel eklenmesi gerekiyor. **İleride düzgün/idempotent bir migration yolu sağlanacak.** Geçici manuel komut:
-    ```sql
-    ALTER TABLE sessions ADD COLUMN cols integer, ADD COLUMN rows integer;
-    ```
-14. ⏳ **(SONRAYA BIRAKILDI — 2026-07-13)** CLI ↔ UI özellik paritesi denetlenecek: UI'daki tüm yeteneklerin CLI'da karşılığı olup olmadığı kontrol edilip eksikler CLI'a eklenecek. (Ayrıntı: "Sırada → Sonraya bırakılanlar".)
+12. ✅ **ÇÖZÜLDÜ (2026-07-13, madde #22)** `generate-certs.sh` interaktif akış şüphesi. Kök neden: `read -n 1` pipe/heredoc girdisinde satır kaydırıp CA/Server alanlarını karıştırıyordu. Betik `ask()` (env>TTY>varsayılan) + `-subj` non-interactive DN ile sağlamlaştırıldı; `openssl verify` ile doğrulandı.
+13. ✅ **ÇÖZÜLDÜ (2026-07-13, madde #22)** `cols`/`rows` migration. Sunucu açılışında idempotent `EnsureSessionColumns` (`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS cols/rows`) çalışıyor; artık manuel adım gerekmiyor.
+14. ✅ **ÇÖZÜLDÜ (2026-07-13, madde #22)** CLI ↔ UI özellik paritesi denetlendi ve eksik komutlar CLI'a eklendi (2FA QR/interaktif, canlı terminal, ssh-install bilinçli kapsam dışı).
 
 ### Windows'ta guardian-server (sunucu) çalıştırma — durum ve eksikler (2026-07-13)
+
+> **GÜNCELLEME (2026-07-13, madde #22):** Aşağıdaki 6 boşluğun büyük kısmı kapatıldı — (1) cert bootstrap için openssl'siz `guardian-server gen-certs` alt-komutu eklendi, (2) Windows servisi için `scripts/install-server-windows.ps1` yazıldı, (3) `GUARDIAN_SERVER_CONFIG` dosya yükleyici eklendi, (5)+(6) `docs/server-setup-windows.md` (PostgreSQL, reverse-proxy nginx/IIS, deploy adımları) yazıldı. Kalan: (4) PostgreSQL kurulumu dokümante edildi ama script'lenmedi; ve tüm bunlar gerçek bir Windows host'ta uçtan uca **çalıştırılıp doğrulanmadı** (Linux'ta cross-compile + syntax kontrolü yapıldı). Aşağıdaki özgün liste tarihsel bağlam için korunuyor.
 
 **Özet:** guardian-server binary'si Windows'a **temiz cross-compile oluyor** (`GOOS=windows GOARCH=amd64 go build` sorunsuz, ~19 MB `guardian-server.exe`). Kodun kendisi büyük ölçüde OS-bağımsız: tüm dosya yolları env değişkenlerinden okunuyor (`TLS_CA_FILE`, `TLS_CERT_FILE`, `TLS_KEY_FILE`, `TLS_CA_KEY_FILE`, `GUARDIAN_AGENT_BINARY_PATH[_WINDOWS]` …), runtime'da Linux'a özgü `syscall`/sinyal/sabit yol kullanımı **yok**. Yani teknik olarak Windows'ta çalışabilir; **ama şu an resmi kurulum/işletim desteği yok** — aşağıdaki boşluklar elle doldurulmalı. (Agent tarafı #8'de zaten Windows'a hazırlandı; buradaki eksikler yalnızca **sunucu**yu Windows'ta koşmakla ilgilidir.)
 
