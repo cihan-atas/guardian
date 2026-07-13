@@ -165,7 +165,7 @@ Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 
 7. ~~**SIGWINCH forward.**~~ ✅ **Tamam (2026-07-13).** SIGWINCH yakalanıp `session.WindowChange` ile aktif oturuma iletiliyor (Unix; Windows'ta işlemsiz, build-tag'li).
 
 **Test kapsamı:**
-8. `guardian-cli` testleri (şu an 0).
+8. ~~`guardian-cli` testleri (şu an 0).~~ ✅ **Tamam (2026-07-13).** `client/client_test.go` — Login (token saklama/boş token/HTTP hata), Bearer auth başlığı, ListServers ayrıştırma, CreateServer hata, DeleteServer 204.
 9. `guardian-agent` SSH/proxy/WebSocket testleri.
 10. `guardian-ui` gerçek mantık testleri (iskelet spec'ler yerine).
 11. `guardian-server` auth/websocket/hub middleware testleri.
@@ -186,7 +186,7 @@ Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 
 7. ~~Admin'in gerçek terminal boyutu değiştiğinde (SIGWINCH) forward edilmiyor~~ — ✅ **ÇÖZÜLDÜ (2026-07-13).** `watchWindowSize` (build-tag'li: `resize_unix.go`) SIGWINCH'i yakalayıp `session.WindowChange(h, w)` ile aktif oturuma iletiyor; Windows'ta işlemsiz (`resize_windows.go`). Not: DB'ye kaydedilen `cols`/`rows` replay tutarlılığı için oturum başındaki değer kalır; canlı boyut değişimi yalnızca etkileşimli oturuma uygulanır.
 
 ### Test kapsamı
-8. `guardian-cli`: hiç test yok.
+8. ~~`guardian-cli`: hiç test yok.~~ — ✅ **ÇÖZÜLDÜ (2026-07-13).** `client/client_test.go` eklendi (httptest ile: Login token akışı, `sendRequest` Bearer başlığı, liste ayrıştırma, oluştur/sil durum kodları).
 9. `guardian-agent`: sadece `file_manager_test.go` var; SSH/proxy/WebSocket akışları test edilmemiş.
 10. `guardian-ui`: 13 `.spec.ts` dosyası var ama hepsi Angular'ın varsayılan iskelet testleri, gerçek mantık test edilmiyor.
 11. `guardian-server`: `auth_middleware.go`, `agent_auth_middleware.go`, `websocket_handler.go`, `hub/hub.go` için test yok — özellikle bu oturumda yapılan auth değişikliklerinin regresyona uğramadığını garanti edecek testler eksik.
