@@ -57,6 +57,19 @@ func New(agentPort, secretToken, caCertFile, certFile, keyFile string) *Client {
 	}
 }
 
+// maxCommandAttempts, ajan geçici olarak ulaşılamaz olduğunda komutun kaç kez
+// denenceğidir. Yalnızca taşıma (transport) hatalarında yeniden denenir —
+// yani ajandan hiç yanıt alınamadığında; bu durumda komut kesinlikle
+// uygulanmamıştır, dolayısıyla add-key/remove-key gibi işlemleri tekrar etmek
+// güvenlidir (çift uygulama riski yok). HTTP yanıtı (200 dışı dahil) alınırsa
+// komut ajana ulaşmış demektir; belirsiz durumu tekrarlamamak için denenmez.
+const maxCommandAttempts = 3
+
+// commandBackoff, denemeler arası bekleme süresini üstel olarak hesaplar.
+func commandBackoff(attempt int) time.Duration {
+	return time.Duration(300*(1<<uint(attempt))) * time.Millisecond // 300ms, 600ms, 1.2s...
+}
+
 func (c *Client) sendCommand(ip, action string, payload interface{}) error {
 	endpoint := fmt.Sprintf("https://%s:%s/actions/%s", ip, c.agentPort, action)
 
@@ -65,26 +78,57 @@ func (c *Client) sendCommand(ip, action string, payload interface{}) error {
 		return fmt.Errorf("payload JSON'a çevrilemedi: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		return fmt.Errorf("istek oluşturulamadı: %w", err)
+	var lastErr error
+	for attempt := 0; attempt < maxCommandAttempts; attempt++ {
+		if attempt > 0 {
+			wait := commandBackoff(attempt - 1)
+			log.Printf("    ↻ Agent'a komut yeniden denenecek (Host: %s, Aksiyon: %s, deneme %d/%d, %s sonra): %v",
+				ip, action, attempt+1, maxCommandAttempts, wait, lastErr)
+			time.Sleep(wait)
+		}
+
+		// İstek gövdesi her denemede yeniden oluşturulur (Body okunup tükenmiş
+		// olabilir).
+		req, reqErr := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonPayload))
+		if reqErr != nil {
+			return fmt.Errorf("istek oluşturulamadı: %w", reqErr)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if c.secretToken != "" {
+			req.Header.Set("Authorization", "Bearer "+c.secretToken)
+		}
+
+		resp, doErr := c.httpClient.Do(req)
+		if doErr != nil {
+			// Taşıma hatası: yanıt yok → komut uygulanmadı, yeniden denenebilir.
+			lastErr = fmt.Errorf("agent'a istek gönderilemedi: %w", doErr)
+			continue
+		}
+
+		// Yanıt alındı; komut ajana ulaştı. 200 dışı durumlar tekrarlanmaz.
+		func() {
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				lastErr = fmt.Errorf("agent beklenmeyen durum kodu döndü: %s", resp.Status)
+			} else {
+				lastErr = nil
+			}
+		}()
+		if lastErr != nil {
+			return lastErr
+		}
+		log.Printf("✅ Agent'a komut başarıyla gönderildi: Host: %s, Aksiyon: %s%s", ip, action, attemptSuffix(attempt))
+		return nil
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.secretToken)
+	return fmt.Errorf("agent %s %d denemede yanıt vermedi: %w", ip, maxCommandAttempts, lastErr)
+}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("agent'a istek gönderilemedi: %w", err)
+func attemptSuffix(attempt int) string {
+	if attempt == 0 {
+		return ""
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("agent beklenmeyen durum kodu döndü: %s", resp.Status)
-	}
-
-	log.Printf("✅ Agent'a komut başarıyla gönderildi: Host: %s, Aksiyon: %s", ip, action)
-	return nil
+	return fmt.Sprintf(" (%d. denemede)", attempt+1)
 }
 
 func (c *Client) SendKeyCommand(ip, action string, payload models.KeyPayload) error {

@@ -160,7 +160,7 @@ Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 
 
 **Dayanıklılık:**
 4. ~~**Agent süre zorlaması.**~~ ✅ **Tamam (2026-07-13).** Kırık `getRuleValidity` kaldırıldı; oturum başlarken sunucudan dönen `valid_until` `enforceSessionTimeout`'a taşınıyor → client-side ikinci savunma katmanı çalışıyor.
-5. **Scheduler retry/backoff.** Agent'a giden best-effort komutlara yeniden deneme + geri çekilme; kalıcı desenkronizasyon önlensin.
+5. ~~**Scheduler retry/backoff.**~~ ✅ **Tamam (2026-07-13).** `agentclient.sendCommand` taşıma hatalarında üstel backoff'la 3 kez deniyor (yalnızca yanıt alınamayan = uygulanmamış komutlar; çift uygulama riski yok). Testli.
 6. **Audit dayanıklılığı.** Asenkron (`go func`) audit yazımı çökmede kayıp veriyor → senkron/queue'lu yazım.
 7. **SIGWINCH forward.** Admin terminal boyutu değişince `session.WindowChange` ile aktif SSH oturumuna iletilsin.
 
@@ -181,7 +181,7 @@ Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 
 
 ### Dayanıklılık
 4. ~~**Agent tarafında oturum süresi zorlaması hiç çalışmıyor**~~ — ✅ **ÇÖZÜLDÜ (2026-07-13).** `getRuleValidity` stub'ı kaldırıldı; oturum başlatılırken sunucudan dönen `valid_until` `parseFlagsAndStartSession` üzerinden `enforceSessionTimeout`'a aktarılıyor. Artık scheduler'ın "terminate"ine ek olarak ajan da kendi zamanlayıcısıyla süreyi zorluyor (iki katmanlı savunma).
-5. Scheduler'ın agent'lara gönderdiği komutlar "best-effort" — agent geçici ulaşılamazsa retry/backoff yok, DB durumu ile gerçek `authorized_keys` durumu kalıcı olarak senkron dışı kalabilir.
+5. ~~Scheduler'ın agent'lara gönderdiği komutlar "best-effort"~~ — ✅ **ÇÖZÜLDÜ (2026-07-13).** `agentclient.sendCommand` taşıma hatalarında üstel backoff'la (300ms/600ms/1.2s) 3 kez deniyor. Yalnızca yanıt alınamayan (= ajana ulaşmamış, uygulanmamış) komutlar tekrarlanır; HTTP yanıtı (200 dışı dahil) alınırsa tekrar edilmez → add/remove-key çift uygulama riski yok. `client_test.go` ile testli.
 6. Audit logları asenkron yazılıyor (`go func`) — sunucu çökerse bazı audit kayıtları kaybolabilir.
 7. Admin'in gerçek terminal boyutu değiştiğinde (SIGWINCH) bu, aktif SSH oturumuna forward edilmiyor (`session.WindowChange` kullanılmıyor) — oturum başında sabitlenen boyut oturum boyunca sabit kalıyor.
 
