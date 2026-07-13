@@ -155,8 +155,8 @@ Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 
 
 **Güvenlik:**
 1. ~~**Shared token → mTLS.**~~ ✅ **Tamam (2026-07-13, madde #21).** İki yönde mTLS; token yalnızca yedek; `authorized_keys`'e token yazılmıyor.
-2. **CORS daraltma.** `main.go` `AllowedOrigins: {"https://*","http://*"}` + `AllowCredentials:true` → gerçek UI origin'ine daraltılsın.
-3. **Elle CORS başlığı temizliği.** `command_handler.go:66`'daki `Access-Control-Allow-Origin: *` (global CORS middleware ile çakışıyor) kaldırılsın.
+2. ~~**CORS daraltma.**~~ ✅ **Tamam (2026-07-13).** `GUARDIAN_CORS_ORIGINS` (virgüllü) ile origin daraltılabiliyor; boşsa joker + uyarı.
+3. ~~**Elle CORS başlığı temizliği.**~~ ✅ **Tamam (2026-07-13).** `command_handler.go`'daki elle `Access-Control-Allow-Origin: *` kaldırıldı.
 
 **Dayanıklılık:**
 4. **Agent süre zorlaması.** `getRuleValidity()` (`main.go:212` `"not implemented"`) gerçekten implemente edilsin → client-side timeout ikinci savunma katmanı.
@@ -176,8 +176,8 @@ Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 
 
 ### Güvenlik (öncelikli)
 1. ~~**Secret token, `authorized_keys`'e açık metin yazılıyor**~~ — ✅ **ÇÖZÜLDÜ (2026-07-13, madde #21).** Ajan↔sunucu kimlik doğrulaması mTLS'e taşındı; token `authorized_keys`'e artık yazılmıyor, yalnızca eski kurulumlar için opsiyonel yedek.
-2. **Geniş CORS + credentials** (`AllowedOrigins: []string{"https://*","http://*"}` + `AllowCredentials: true`) — tarayıcı güvenlik modelini büyük ölçüde etkisizleştiriyor. Gerçek UI origin'ine daraltılmalı.
-3. `dashboard_handler.go`'daki elle set edilmiş `Access-Control-Allow-Origin: *` satırları global CORS middleware ile çakışıyor, temizlenmeli.
+2. ~~**Geniş CORS + credentials**~~ — ✅ **ÇÖZÜLDÜ (2026-07-13).** `GUARDIAN_CORS_ORIGINS` env'i ile origin listesi daraltılabiliyor (boşsa geriye dönük joker + üretim uyarısı).
+3. ~~Elle set edilmiş `Access-Control-Allow-Origin: *`~~ — ✅ **ÇÖZÜLDÜ (2026-07-13).** `command_handler.go`'daki satır kaldırıldı (global CORS middleware yeterli). Not: eski notta `dashboard_handler.go` yazıyordu; gerçekte `command_handler.go`'daydı.
 
 ### Dayanıklılık
 4. **Agent tarafında oturum süresi zorlaması hiç çalışmıyor** — `getRuleValidity()` her zaman `"not implemented"` hatası döndürüyor, client-side timeout goroutine'i hiç başlamıyor. Süre kontrolü tamamen sunucudaki scheduler'ın "terminate" komutuna bağlı (tek katmanlı savunma).

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"guardian.com/server/agentclient"
 	"guardian.com/server/handlers"
@@ -150,8 +151,17 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
+	// CORS origin'leri GUARDIAN_CORS_ORIGINS (virgülle ayrılmış) ile daraltılır.
+	// Ayarlanmazsa geriye dönük uyumluluk için izin verici joker kalır ama
+	// üretimde daraltılması için uyarı loglanır.
+	corsOrigins := parseCORSOrigins(os.Getenv("GUARDIAN_CORS_ORIGINS"))
+	if len(corsOrigins) == 0 {
+		log.Println("UYARI: GUARDIAN_CORS_ORIGINS ayarlı değil; tüm origin'lere izin veriliyor (joker). Üretimde arayüzün gerçek origin'ine daraltın.")
+		corsOrigins = []string{"https://*", "http://*"}
+	}
+
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"https://*", "http://*"},
+		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
@@ -346,6 +356,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("Güvenli (TLS) sunucu başlatılamadı: %v", err)
 	}
+}
+
+// parseCORSOrigins, virgülle ayrılmış origin listesini ayrıştırır; boş
+// girişleri atar. Boş dönerse çağıran taraf joker'e düşer.
+func parseCORSOrigins(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if o := strings.TrimSpace(part); o != "" {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 func getEnv(key, fallback string) string {
