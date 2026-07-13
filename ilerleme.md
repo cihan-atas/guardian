@@ -181,6 +181,26 @@ Aşağıdaki üç iş bilinçli olarak ertelendi; sırası gelince ele alınacak
 
 ---
 
+## 📋 Yapılacaklar
+
+> Kalan/ertelenen işlerin aktif takip listesi. Durum: ⏳ bekliyor · 🔄 devam · ✅ bitti.
+
+### Şu an paralel yürütülenler (2026-07-13, alt-ajanlarla)
+- 🔄 **CLI ↔ UI özellik paritesi** — UI'daki tüm yeteneklerin CLI karşılığı denetlenip eksikler CLI'a eklenecek. *(guardian-cli)*
+- 🔄 **Windows sunucu desteği (kod tarafı)** — `GUARDIAN_SERVER_CONFIG` dosya yükleyici + openssl'siz `gen-certs` Go alt-komutu. *(guardian-server)*
+- 🔄 **`cols`/`rows` migration** — sunucu açılışında idempotent otomatik migration + `schema.sql`. *(guardian-server)*
+- 🔄 **`websocket_handler` testleri** — DB gerektirmeyen doğrulama yolları. *(guardian-server)*
+- 🔄 **`generate-certs.sh` şüphesi** — interaktif akış kök nedeni + düzeltme. *(script)*
+- 🔄 **Windows sunucu doküman/scriptleri** — servis kurulumu, PostgreSQL, reverse-proxy, deploy rehberi. *(docs)*
+- 🔄 **guardian-agent ek birim testleri** — canlı SSH gerektirmeyen saf mantık. *(guardian-agent)*
+
+### Sonraya (daha büyük / harici ortam gerektiren)
+- ⏳ **Audit aynı-transaction bütünlüğü** — mutasyon + audit tek DB transaction'ında (şu an senkron ama ayrı yazım).
+- ⏳ **Agent SSH/proxy/WS uçtan uca testi** — canlı sshd + sunucu gerektirir.
+- ⏳ **Windows agent runtime doğrulaması** — gerçek Windows host'ta uçtan uca.
+
+---
+
 ## ⚠️ Kalan Eksikler / Bilinen Riskler
 
 ### Güvenlik (öncelikli)
