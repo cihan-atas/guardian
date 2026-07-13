@@ -21,7 +21,7 @@ type Client struct {
 	secretToken string
 }
 
-func New(agentPort, secretToken, caCertFile string) *Client {
+func New(agentPort, secretToken, caCertFile, certFile, keyFile string) *Client {
 	caCert, err := ioutil.ReadFile(caCertFile)
 	if err != nil {
 		log.Fatalf("FATAL: CA sertifikası okunamadı (%s): %v", caCertFile, err)
@@ -32,6 +32,17 @@ func New(agentPort, secretToken, caCertFile string) *Client {
 
 	tlsConfig := &tls.Config{
 		RootCAs: caCertPool,
+	}
+
+	// Sunucu→ajan mTLS: sunucu, ajana yaptığı isteklerde kendi sertifikasını
+	// (server.crt/server.key) istemci sertifikası olarak sunar; ajan bunu CA
+	// ile doğrular. Sertifika yüklenemezse token yedeğiyle devam edilir.
+	if certFile != "" && keyFile != "" {
+		if cert, certErr := tls.LoadX509KeyPair(certFile, keyFile); certErr == nil {
+			tlsConfig.Certificates = []tls.Certificate{cert}
+		} else {
+			log.Printf("UYARI: Sunucu istemci sertifikası yüklenemedi (%s/%s): %v — ajan çağrılarında mTLS devre dışı, token yedeği kullanılacak.", certFile, keyFile, certErr)
+		}
 	}
 
 	transport := &http.Transport{TLSClientConfig: tlsConfig}

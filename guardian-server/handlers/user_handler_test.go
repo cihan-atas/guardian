@@ -16,6 +16,7 @@ import (
 )
 
 func TestUserHandlers(t *testing.T) {
+	requireDB(t)
 	testRouter := chi.NewRouter()
 	testRouter.Post("/api/users", CreateSystemUser(app.DB))
 	testRouter.Delete("/api/users/{userID}", DeleteSystemUser(app.DB))

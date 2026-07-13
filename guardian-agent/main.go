@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -56,8 +57,11 @@ func loadConfig() (*Config, error) {
 		TrustedHostKeyPath: getEnv("GUARDIAN_AGENT_TRUSTED_HOST_KEY", "/etc/ssh/ssh_host_ed25519_key.pub"),
 	}
 
+	// Kimlik doğrulama artık öncelikli olarak mTLS (agent.crt/agent.key) ile
+	// yapılıyor; GUARDIAN_SECRET_TOKEN yalnızca eski sunucularla uyumluluk için
+	// opsiyonel bir yedek. Bu yüzden token zorunlu değil.
 	if cfg.SecretToken == "" {
-		return nil, errors.New("güvenlik için GUARDIAN_SECRET_TOKEN ortam değişkeni ayarlanmalıdır")
+		log.Println("Bilgi: GUARDIAN_SECRET_TOKEN ayarlı değil; kimlik doğrulama mTLS ile yapılacak.")
 	}
 	return cfg, nil
 }
@@ -94,8 +98,32 @@ func startHttpServer() {
 	mux.Handle("/actions/terminate-session", authMiddleware(http.HandlerFunc(handleTerminateSession)))
 	mux.HandleFunc("/status", handleStatus)
 
+	// Sunucu→ajan mTLS: sunucu, istemci sertifikası sunduğunda TLS katmanı
+	// zinciri CA'ya karşı doğrular. Sağlık kontrolü (/status) sertifikasız da
+	// erişilebilir olduğundan VerifyClientCertIfGiven kullanılır; asıl kimlik
+	// doğrulama authMiddleware'de yapılır.
+	caCertFile := getEnv("TLS_CA_FILE", "../certs/ca.crt")
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+	if caPEM, caErr := os.ReadFile(caCertFile); caErr == nil {
+		pool := x509.NewCertPool()
+		if pool.AppendCertsFromPEM(caPEM) {
+			tlsConfig.ClientCAs = pool
+			tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+		} else {
+			log.Printf("UYARI: CA sertifikası ayrıştırılamadı (%s) — sunucu istemci sertifikası doğrulanamayacak (token yedeği geçerli).", caCertFile)
+		}
+	} else {
+		log.Printf("UYARI: CA sertifikası okunamadı (%s): %v — sunucu istemci sertifikası doğrulanamayacak (token yedeği geçerli).", caCertFile, caErr)
+	}
+
+	srv := &http.Server{
+		Addr:      ":" + config.AgentPort,
+		Handler:   mux,
+		TLSConfig: tlsConfig,
+	}
+
 	log.Printf("🛡️ Guardian Agent API https://localhost:%s adresinde GÜVENLİ modda başlatılıyor...", config.AgentPort)
-	if err := http.ListenAndServeTLS(":"+config.AgentPort, config.CertFile, config.KeyFile, mux); err != nil {
+	if err := srv.ListenAndServeTLS(config.CertFile, config.KeyFile); err != nil {
 		log.Fatalf("Güvenli (TLS) agent sunucusu başlatılamadı: %v", err)
 	}
 }
@@ -471,9 +499,26 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "OK")
 }
 
+// authMiddleware, sunucu→ajan isteklerini doğrular. Öncelikli yöntem mTLS'dir:
+// sunucu, TLS el sıkışmasında CA tarafından imzalı bir istemci sertifikası
+// sunarsa (ajanın TLS katmanı zinciri zaten doğrulamıştır) istek kabul edilir.
+// mTLS yoksa, eski sunucularla uyumluluk için paylaşımlı GUARDIAN_SECRET_TOKEN
+// yedeğine düşülür.
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1) mTLS: geçerli (CA imzalı) istemci sertifikası sunulmuşsa kabul et.
+		if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// 2) Yedek: paylaşımlı token. Token yapılandırılmamışsa yalnızca mTLS
+		// kabul edildiği için istek reddedilir.
 		expectedToken := os.Getenv("GUARDIAN_SECRET_TOKEN")
+		if expectedToken == "" {
+			http.Error(w, "Kimlik doğrulama başarısız: istemci sertifikası (mTLS) gerekli.", http.StatusUnauthorized)
+			return
+		}
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			http.Error(w, "Authorization başlığı eksik", http.StatusUnauthorized)
@@ -484,7 +529,7 @@ func authMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Geçersiz Authorization başlığı formatı", http.StatusUnauthorized)
 			return
 		}
-		if parts[1] != expectedToken {
+		if subtle.ConstantTimeCompare([]byte(parts[1]), []byte(expectedToken)) != 1 {
 			http.Error(w, "Geçersiz token", http.StatusForbidden)
 			return
 		}
@@ -492,6 +537,10 @@ func authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// createApiClient, sunucuya yapılan çağrılar için HTTP istemcisi üretir. CA'yı
+// doğrulamak için RootCAs, ajan→sunucu mTLS için de ajanın kendi sertifikasını
+// (agent.crt/agent.key) istemci sertifikası olarak yükler. Sertifika
+// yüklenemezse token yedeğiyle devam edilir.
 func createApiClient() *http.Client {
 	caCert, err := os.ReadFile(getEnv("TLS_CA_FILE", "../certs/ca.crt"))
 	if err != nil {
@@ -499,10 +548,21 @@ func createApiClient() *http.Client {
 	}
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
+
+	tlsConfig := &tls.Config{RootCAs: caCertPool}
+
+	certFile := getEnv("AGENT_TLS_CERT_FILE", "../certs/agent.crt")
+	keyFile := getEnv("AGENT_TLS_KEY_FILE", "../certs/agent.key")
+	if cert, certErr := tls.LoadX509KeyPair(certFile, keyFile); certErr == nil {
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	} else {
+		log.Printf("UYARI: Ajan istemci sertifikası yüklenemedi (%s/%s): %v — sunucuya mTLS devre dışı, token yedeği kullanılacak.", certFile, keyFile, certErr)
+	}
+
 	return &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: caCertPool},
+			TLSClientConfig: tlsConfig,
 		},
 	}
 }

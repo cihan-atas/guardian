@@ -72,15 +72,18 @@ func addKeyToSpecificFile(path string, publicKey string, ruleID int) error {
 	serverHost := os.Getenv("GUARDIAN_SERVER_HOST")
 	serverPort := os.Getenv("GUARDIAN_SERVER_PORT")
 	serverID := os.Getenv("GUARDIAN_AGENT_SERVER_ID")
-	secretToken := os.Getenv("GUARDIAN_SECRET_TOKEN")
 	agentSshKeyPath := os.Getenv("GUARDIAN_AGENT_SSH_KEY_PATH")
 
 	caCertFile := os.Getenv("TLS_CA_FILE")
 	agentCertFile := os.Getenv("AGENT_TLS_CERT_FILE")
 	agentKeyFile := os.Getenv("AGENT_TLS_KEY_FILE")
 
-	envVars := fmt.Sprintf(`environment="GUARDIAN_SERVER_HOST=%s",environment="GUARDIAN_SERVER_PORT=%s",environment="GUARDIAN_AGENT_SERVER_ID=%s",environment="GUARDIAN_SECRET_TOKEN=%s",environment="GUARDIAN_AGENT_SSH_KEY_PATH=%s",environment="TLS_CA_FILE=%s",environment="AGENT_TLS_CERT_FILE=%s",environment="AGENT_TLS_KEY_FILE=%s"`,
-		serverHost, serverPort, serverID, secretToken, agentSshKeyPath, caCertFile, agentCertFile, agentKeyFile)
+	// GÜVENLİK: GUARDIAN_SECRET_TOKEN artık authorized_keys'e YAZILMAZ.
+	// Proxy ajanı, sunucuya kimlik doğrulamasını mTLS (agent.crt/agent.key,
+	// yollar aşağıda geçiyor — bunlar gizli değil, yalnızca dosya yolu) ile
+	// yapar. Böylece dosyayı okuyan biri ajan API'sini taklit edemez.
+	envVars := fmt.Sprintf(`environment="GUARDIAN_SERVER_HOST=%s",environment="GUARDIAN_SERVER_PORT=%s",environment="GUARDIAN_AGENT_SERVER_ID=%s",environment="GUARDIAN_AGENT_SSH_KEY_PATH=%s",environment="TLS_CA_FILE=%s",environment="AGENT_TLS_CERT_FILE=%s",environment="AGENT_TLS_KEY_FILE=%s"`,
+		serverHost, serverPort, serverID, agentSshKeyPath, caCertFile, agentCertFile, agentKeyFile)
 
 	agentPath := "/usr/local/bin/guardian-agent"
 	command := fmt.Sprintf(`command="%s proxy --rule-id=%d"`, agentPath, ruleID)

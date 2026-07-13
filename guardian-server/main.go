@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"fmt"
 	"log"
@@ -65,7 +67,11 @@ func main() {
 		log.Fatal("FATAL: Veritabanı için gerekli ortam değişkenleri eksik.")
 	}
 	if secretToken == "" {
-		log.Fatal("FATAL: Güvenlik için GUARDIAN_SECRET_TOKEN ortam değişkeni ayarlanmamış!")
+		// Ajan kimlik doğrulaması artık öncelikli olarak mTLS (istemci
+		// sertifikası) ile yapılıyor; paylaşımlı token yalnızca eski
+		// kurulumlarla uyumluluk için geriye dönük bir yedek. Token yoksa
+		// yalnızca mTLS kabul edilir.
+		log.Println("UYARI: GUARDIAN_SECRET_TOKEN ayarlı değil; ajan kimlik doğrulaması yalnızca mTLS ile yapılacak (token yedeği devre dışı).")
 	}
 
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
@@ -131,7 +137,7 @@ func main() {
 		PublicURL:   publicURL,
 	}
 
-	ac := agentclient.New(agentPort, secretToken, caCertFile)
+	ac := agentclient.New(agentPort, secretToken, caCertFile, certFile, keyFile)
 	wsHub := hub.NewHub()
 
 	go wsHub.Run()
@@ -311,8 +317,32 @@ func main() {
 		})
 	})
 
+	// Ajan→sunucu mTLS: ajanlar TLS el sıkışmasında CA tarafından imzalı
+	// istemci sertifikası sunar; sunduklarında zincir doğrulanır. Tarayıcılar
+	// (admin arayüzü) istemci sertifikası sunmadığından VerifyClientCertIfGiven
+	// kullanılır — sertifika varsa doğrulanır, yoksa el sıkışma devam eder ve
+	// kimlik doğrulama katmanı (AdminAuth/AgentAuth) devreye girer.
+	caPEM, caReadErr := os.ReadFile(caCertFile)
+	if caReadErr != nil {
+		log.Fatalf("FATAL: mTLS için CA sertifikası okunamadı (%s): %v", caCertFile, caReadErr)
+	}
+	clientCAPool := x509.NewCertPool()
+	if !clientCAPool.AppendCertsFromPEM(caPEM) {
+		log.Fatalf("FATAL: CA sertifikası ayrıştırılamadı (%s)", caCertFile)
+	}
+
+	srv := &http.Server{
+		Addr:    ":" + serverPort,
+		Handler: r,
+		TLSConfig: &tls.Config{
+			ClientAuth: tls.VerifyClientCertIfGiven,
+			ClientCAs:  clientCAPool,
+			MinVersion: tls.VersionTLS12,
+		},
+	}
+
 	fmt.Printf("🚀 Guardian Server (Chi) https://localhost:%s adresinde GÜVENLİ modda başlatılıyor...\n", serverPort)
-	err = http.ListenAndServeTLS(":"+serverPort, certFile, keyFile, r)
+	err = srv.ListenAndServeTLS(certFile, keyFile)
 	if err != nil {
 		log.Fatalf("Güvenli (TLS) sunucu başlatılamadı: %v", err)
 	}

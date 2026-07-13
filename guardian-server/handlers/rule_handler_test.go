@@ -44,6 +44,7 @@ var _ agentclient.AgentCommunicator = (*MockAgentClient)(nil)
 // --- Test Fonksiyonları ---
 
 func TestRuleHandlers(t *testing.T) {
+	requireDB(t)
 	// Router'ı test fonksiyonunun dışında, bir kez tanımlamak yeterli.
 	testRouter := chi.NewRouter()
 

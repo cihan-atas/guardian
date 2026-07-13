@@ -15,6 +15,7 @@ import (
 )
 
 func TestServerHandlers(t *testing.T) {
+	requireDB(t)
 	// Her testin başında veritabanını sıfırlamak iyi bir pratiktir.
 	resetTables(t, app.DB)
 

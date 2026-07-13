@@ -137,19 +137,45 @@ Guardian, geleneksel kalıcı `authorized_keys` yerine **Just-in-Time (JIT) ve d
 - **UI:** yeni **Hesabım** sayfası (`features/account`, tüm rollere açık) — parola değiştirme + 2FA yönetimi. Kurulumda QR (istemcide `qrcode` ile üretilir, harici servis yok) + manuel anahtar. Sidebar kullanıcı kutusu bu sayfaya linklendi.
 - Not: parola değiştirmede `VerifyPassword` doğrudan bcrypt kontrolü yapar (Authenticate'in 2FA yan etkisini tetiklemeden).
 
+### 21. Ajan kimlik doğrulaması: paylaşımlı token → mTLS (2026-07-13)
+- **Sorun:** `GUARDIAN_SECRET_TOKEN` hedef sunucunun `authorized_keys` dosyasına açık metin yazılıyordu (`environment=` direktifi); dosyayı okuyabilen biri ajan API'sini taklit edebiliyordu.
+- **Çözüm:** Her iki yönde de kimlik doğrulaması **mTLS** (mevcut CA imzalı `agent.crt`/`server.crt`) ile yapılıyor; paylaşımlı token yalnızca eski kurulumlar için **geriye dönük yedek**.
+  - **Ajan→sunucu:** Sunucu TLS dinleyicisi `ClientAuth: VerifyClientCertIfGiven` + `ClientCAs` (tarayıcıları bozmadan; admin arayüzü sertifika sunmaz). `AgentAuth` middleware'i geçerli istemci sertifikası varsa kabul eder, yoksa token yedeğine düşer. Ajan `createApiClient`/WS dialer artık istemci sertifikası (`agent.crt`/`agent.key`) sunuyor.
+  - **Sunucu→ajan:** Ajan dinleyicisi de `VerifyClientCertIfGiven` + `ClientCAs` (sağlık `/status` sertifikasız erişilebilir kalır). `agentclient` sunucu sertifikasını (`server.crt`/`server.key`) istemci sertifikası olarak sunuyor; `agentclient.New(...)` imzasına `certFile`/`keyFile` eklendi.
+- **En önemli düzeltme:** `file_manager.go` artık `GUARDIAN_SECRET_TOKEN`'ı `authorized_keys`'e **yazmıyor**; yalnızca gizli olmayan dosya yolları (cert/key/CA) geçiyor.
+- **Uyumluluk:** `GUARDIAN_SECRET_TOKEN` hem sunucuda hem ajanda artık **opsiyonel** (yoksa yalnızca mTLS). Sertifikalar zaten hem `serverAuth` hem `clientAuth` EKU'ya sahip (Go ile üretilenler) veya EKU kısıtı yok (bootstrap) → mTLS iki yönde de çalışır. Not: `agent.conf` içindeki token (root-only 0600) zararsız yedek olarak kalır; tüm ajanlar yenilendikten sonra kaldırılabilir.
+- **Test:** `handlers/agent_auth_middleware_test.go` — gerçek TLS el sıkışmasıyla: (1) mTLS istemci sertifikası kabul, (2) sertifikasız+token'sız 401, (3) token yedeği (doğru→200, yanlış→403). Ayrıca `TestMain` DB yokken artık paketi öldürmüyor (DB testleri `requireDB` ile atlanıyor), böylece DB'siz ortamda saf mantık testleri çalışabiliyor.
+
 ---
 
 ## 🗺️ Yol Haritası / Planlanan Özellikler
 
-### Sırada
-_(Ana yol haritası maddeleri tamamlandı. Sıradaki fikirler aşağıdaki "Kalan Eksikler" bölümündeki güvenlik/dayanıklılık başlıklarıdır.)_
+### Sırada — sertleştirme & dayanıklılık & test (öncelik sırası, 2026-07-13)
+Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 başlığı sırayla kapatmak:
+
+**Güvenlik:**
+1. ~~**Shared token → mTLS.**~~ ✅ **Tamam (2026-07-13, madde #21).** İki yönde mTLS; token yalnızca yedek; `authorized_keys`'e token yazılmıyor.
+2. **CORS daraltma.** `main.go` `AllowedOrigins: {"https://*","http://*"}` + `AllowCredentials:true` → gerçek UI origin'ine daraltılsın.
+3. **Elle CORS başlığı temizliği.** `command_handler.go:66`'daki `Access-Control-Allow-Origin: *` (global CORS middleware ile çakışıyor) kaldırılsın.
+
+**Dayanıklılık:**
+4. **Agent süre zorlaması.** `getRuleValidity()` (`main.go:212` `"not implemented"`) gerçekten implemente edilsin → client-side timeout ikinci savunma katmanı.
+5. **Scheduler retry/backoff.** Agent'a giden best-effort komutlara yeniden deneme + geri çekilme; kalıcı desenkronizasyon önlensin.
+6. **Audit dayanıklılığı.** Asenkron (`go func`) audit yazımı çökmede kayıp veriyor → senkron/queue'lu yazım.
+7. **SIGWINCH forward.** Admin terminal boyutu değişince `session.WindowChange` ile aktif SSH oturumuna iletilsin.
+
+**Test kapsamı:**
+8. `guardian-cli` testleri (şu an 0).
+9. `guardian-agent` SSH/proxy/WebSocket testleri.
+10. `guardian-ui` gerçek mantık testleri (iskelet spec'ler yerine).
+11. `guardian-server` auth/websocket/hub middleware testleri.
 
 ---
 
 ## ⚠️ Kalan Eksikler / Bilinen Riskler
 
 ### Güvenlik (öncelikli)
-1. **Secret token, hedef sunuculardaki `authorized_keys` dosyasına açık metin yazılıyor** (`environment="GUARDIAN_SECRET_TOKEN=..."` direktifiyle, `file_manager.go`). Dosyaya erişen biri agent API'sini taklit edebilir. Kalıcı çözüm: agent'ın proxy modunda sunucuya kimlik doğrulamasını paylaşımlı token yerine zaten var olan mTLS sertifikasıyla (`agent.crt`/`agent.key`) yapması — orta ölçekli bir refactor, henüz yapılmadı.
+1. ~~**Secret token, `authorized_keys`'e açık metin yazılıyor**~~ — ✅ **ÇÖZÜLDÜ (2026-07-13, madde #21).** Ajan↔sunucu kimlik doğrulaması mTLS'e taşındı; token `authorized_keys`'e artık yazılmıyor, yalnızca eski kurulumlar için opsiyonel yedek.
 2. **Geniş CORS + credentials** (`AllowedOrigins: []string{"https://*","http://*"}` + `AllowCredentials: true`) — tarayıcı güvenlik modelini büyük ölçüde etkisizleştiriyor. Gerçek UI origin'ine daraltılmalı.
 3. `dashboard_handler.go`'daki elle set edilmiş `Access-Control-Allow-Origin: *` satırları global CORS middleware ile çakışıyor, temizlenmeli.
 

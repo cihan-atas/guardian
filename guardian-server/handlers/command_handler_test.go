@@ -15,6 +15,7 @@ import (
 )
 
 func TestCommandHandlers(t *testing.T) {
+	requireDB(t)
 	t.Run("GetSessionCommands: should retrieve commands for a session", func(t *testing.T) {
 		resetTables(t, app.DB)
 		testRouter := chi.NewRouter()

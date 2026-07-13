@@ -45,6 +45,7 @@ func (m *SessionMockAgentClient) ValidateUser(ip, username string) error {
 var _ agentclient.AgentCommunicator = (*SessionMockAgentClient)(nil)
 
 func TestSessionHandlers(t *testing.T) {
+	requireDB(t)
 
 	t.Run("ListSessions: should return a paginated list of sessions", func(t *testing.T) {
 		resetTables(t, app.DB)

@@ -16,6 +16,7 @@ import (
 )
 
 func TestKeyHandlers(t *testing.T) {
+	requireDB(t)
 	testRouter := chi.NewRouter()
 	testRouter.Post("/api/keys", CreatePublicKey(app.DB))
 	testRouter.Delete("/api/keys/{keyID}", DeletePublicKey(app.DB))

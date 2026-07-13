@@ -12,6 +12,7 @@ import (
 )
 
 func TestDashboardHandlers(t *testing.T) {
+	requireDB(t)
 	testRouter := chi.NewRouter()
 	testRouter.Get("/api/dashboard/stats", GetDashboardStats(app.DB))
 	testRouter.Get("/api/dashboard/session-activity", GetSessionActivity(app.DB))

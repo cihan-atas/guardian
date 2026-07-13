@@ -25,6 +25,19 @@ type testApp struct {
 
 var app testApp
 
+// dbAvailable, test veritabanına bağlanılabildiğini gösterir. Bağlantı yoksa
+// DB gerektiren testler requireDB ile atlanır; DB gerektirmeyen testler
+// (ör. saf middleware/mantık testleri) yine de çalışır.
+var dbAvailable bool
+
+// requireDB, test veritabanı yoksa testi atlar.
+func requireDB(t *testing.T) {
+	t.Helper()
+	if !dbAvailable {
+		t.Skip("test veritabanı mevcut değil; DB gerektiren test atlanıyor")
+	}
+}
+
 // TestMain, 'handlers' paketindeki TÜM testler çalışmadan önce bir kez çalışır.
 // Görevi, test veritabanı bağlantısını kurmak ve tüm testler bittikten sonra kapatmaktır.
 func TestMain(m *testing.M) {
@@ -55,11 +68,14 @@ func TestMain(m *testing.M) {
 
 	var err error
 	app.DB, err = sql.Open("pgx", dsn)
-	if err != nil {
-		log.Fatalf("Test veritabanı sürücüsü açılamadı: %v", err)
-	}
-	if err = app.DB.Ping(); err != nil {
-		log.Fatalf("Test veritabanına bağlanılamadı: %v", err)
+	if err == nil {
+		if pingErr := app.DB.Ping(); pingErr == nil {
+			dbAvailable = true
+		} else {
+			log.Printf("UYARI: Test veritabanına bağlanılamadı (%v); DB gerektiren testler atlanacak.", pingErr)
+		}
+	} else {
+		log.Printf("UYARI: Test veritabanı sürücüsü açılamadı (%v); DB gerektiren testler atlanacak.", err)
 	}
 
 	app.Router = chi.NewRouter()
@@ -67,8 +83,9 @@ func TestMain(m *testing.M) {
 	// Tüm testleri çalıştır.
 	code := m.Run()
 
-	// Testler bittikten sonra veritabanı bağlantısını kapat.
-	app.DB.Close()
+	if app.DB != nil {
+		app.DB.Close()
+	}
 
 	os.Exit(code)
 }
