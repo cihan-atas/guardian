@@ -29,6 +29,18 @@ func printRoutes(r chi.Router) {
 	})
 }
 func main() {
+	// Env değişkenleri okunmadan ÖNCE yapılandırma dosyasını (varsa) yükle;
+	// yalnızca HENÜZ set edilmemiş env'leri doldurur. systemd EnvironmentFile
+	// olmayan ortamlarda (ör. Windows) sunucunun yapılandırma kaynağı budur.
+	loadConfigFileIntoEnv()
+
+	// gen-certs alt-komutu: openssl olmadan CA + sunucu sertifikası üretir ve
+	// çıkar. Normal sunucu başlatma akışına girmeden ayrı yola gider.
+	if len(os.Args) > 1 && os.Args[1] == "gen-certs" {
+		runGenCerts(os.Args[2:])
+		return
+	}
+
 	dbUser := os.Getenv("POSTGRES_USER")
 	dbPassword := os.Getenv("POSTGRES_PASSWORD")
 	dbHost := getEnv("POSTGRES_HOST", "db")
@@ -115,6 +127,9 @@ func main() {
 	}
 	if err := services.EnsureEnrollTable(db); err != nil {
 		log.Fatalf("agent_enroll_tokens tablosu oluşturulamadı: %v", err)
+	}
+	if err := services.EnsureSessionColumns(db); err != nil {
+		log.Fatalf("sessions kolonları eklenemedi: %v", err)
 	}
 
 	// CA anahtarını (ca.key) yükle; yoksa agent oto-kurulum (enrollment) devre

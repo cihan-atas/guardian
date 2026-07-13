@@ -9,6 +9,21 @@ import (
 	"guardian.com/server/agentclient"
 )
 
+// EnsureSessionColumns, eski kurulumlarda sessions tablosunda bulunmayabilecek
+// terminal boyutu kolonlarını (cols/rows) idempotent şekilde ekler.
+func EnsureSessionColumns(db *sql.DB) error {
+	stmts := []string{
+		`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS cols integer`,
+		`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS rows integer`,
+	}
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			return fmt.Errorf("sessions kolonları eklenemedi: %w", err)
+		}
+	}
+	return nil
+}
+
 func UpdateAndTerminateSession(db *sql.DB, ac agentclient.AgentCommunicator, sessionID int, newStatus string, r *http.Request) error {
 	var agentIP string
 	var currentStatus string
