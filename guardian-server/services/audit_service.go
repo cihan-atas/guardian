@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"time"
 )
 
 type AuditAction string
@@ -62,8 +63,17 @@ func Record(db *sql.DB, r *http.Request, logEntry AuditLog) {
   		INSERT INTO audit_logs (admin_ref, action, target_type, target_id, status, error_message)
   		VALUES ($1, $2, $3, $4, $5, $6)`
 
-	go func() {
-		_, err := db.Exec(query,
+	// Denetim kaydı SENKRON yazılır: kayıt, denetlenen işlemi yapan handler
+	// dönmeden önce kalıcı hale gelir. Önceden `go func()` ile fire-and-forget
+	// yazılıyordu; bu, işlem ile audit yazımı arasında süreç çökerse kaydın
+	// kaybolmasına yol açabiliyordu. Geçici hatalara karşı kısa bir yeniden
+	// deneme yapılır. (Aynı-transaction bütünlüğü ayrı ve daha büyük bir iş.)
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
+		}
+		_, err = db.Exec(query,
 			logEntry.AdminRef,
 			logEntry.Action,
 			logEntry.TargetType,
@@ -71,9 +81,9 @@ func Record(db *sql.DB, r *http.Request, logEntry AuditLog) {
 			logEntry.Status,
 			sql.NullString{String: logEntry.ErrorMessage, Valid: logEntry.ErrorMessage != ""},
 		)
-
-		if err != nil {
-			log.Printf("[CRITICAL] DENETİM KAYDI YAZILAMADI: %v", err)
+		if err == nil {
+			return
 		}
-	}()
+	}
+	log.Printf("[CRITICAL] DENETİM KAYDI YAZILAMADI (%d deneme): %v", 3, err)
 }
