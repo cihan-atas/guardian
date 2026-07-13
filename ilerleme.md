@@ -166,7 +166,7 @@ Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 
 
 **Test kapsamı:**
 8. ~~`guardian-cli` testleri (şu an 0).~~ ✅ **Tamam (2026-07-13).** `client/client_test.go` — Login (token saklama/boş token/HTTP hata), Bearer auth başlığı, ListServers ayrıştırma, CreateServer hata, DeleteServer 204.
-9. `guardian-agent` SSH/proxy/WebSocket testleri.
+9. ~~`guardian-agent` SSH/proxy/WebSocket testleri.~~ ✅ **Tamam (2026-07-13).** `auth_middleware_test.go` (mTLS/token fallback, gerçek TLS el sıkışması) + `config_file_test.go` (agent.conf ayrıştırma, getEnv). SSH/proxy uçtan uca kısmı canlı ortam gerektirdiğinden kapsam dışı.
 10. `guardian-ui` gerçek mantık testleri (iskelet spec'ler yerine).
 11. `guardian-server` auth/websocket/hub middleware testleri.
 
@@ -187,7 +187,7 @@ Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 
 
 ### Test kapsamı
 8. ~~`guardian-cli`: hiç test yok.~~ — ✅ **ÇÖZÜLDÜ (2026-07-13).** `client/client_test.go` eklendi (httptest ile: Login token akışı, `sendRequest` Bearer başlığı, liste ayrıştırma, oluştur/sil durum kodları).
-9. `guardian-agent`: sadece `file_manager_test.go` var; SSH/proxy/WebSocket akışları test edilmemiş.
+9. ~~`guardian-agent`: sadece `file_manager_test.go` var~~ — ✅ **KISMEN ÇÖZÜLDÜ (2026-07-13).** `auth_middleware_test.go` (mTLS kabul / sertifikasız+token'sız 401 / token yedeği 200-403, gerçek TLS handshake) ve `config_file_test.go` (agent.conf KEY=VALUE ayrıştırma, mevcut env koruması, `getEnv` fallback) eklendi. Not: SSH/proxy/WebSocket uçtan uca akışı canlı sshd + sunucu gerektirdiğinden hâlâ birim testsiz.
 10. `guardian-ui`: 13 `.spec.ts` dosyası var ama hepsi Angular'ın varsayılan iskelet testleri, gerçek mantık test edilmiyor.
 11. `guardian-server`: `auth_middleware.go`, `agent_auth_middleware.go`, `websocket_handler.go`, `hub/hub.go` için test yok — özellikle bu oturumda yapılan auth değişikliklerinin regresyona uğramadığını garanti edecek testler eksik.
 
