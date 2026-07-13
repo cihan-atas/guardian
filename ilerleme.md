@@ -1,6 +1,8 @@
 # Guardian — İlerleme Durumu
 
 > Bu dosya, projede yapılan çalışmaları ve bilinen eksikleri takip etmek için tutulur. Son güncelleme: 2026-07-13.
+>
+> **Sonraya bırakılan işler:** (1) `generate-certs.sh` interaktif akış şüphesi, (2) `cols`/`rows` migration, (3) CLI ↔ UI özellik paritesi denetimi. Detaylar için "Yol Haritası → Sonraya bırakılanlar" ve "Kalan Eksikler → Diğer" bölümlerine bakın.
 
 ## Proje Özeti
 
@@ -170,6 +172,13 @@ Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 
 10. ~~`guardian-ui` gerçek mantık testleri (iskelet spec'ler yerine).~~ ✅ **Tamam (2026-07-13).** 11 iskelet "should create" spec'i silindi; 4 gerçek spec eklendi (time-utils, status-labels, AuthService, authInterceptor) — 32 test geçiyor.
 11. ~~`guardian-server` auth/websocket/hub middleware testleri.~~ ✅ **Tamam (2026-07-13).** `agent_auth_middleware_test.go` (mTLS/token), `auth_middleware_test.go` (bearerToken/AdminAuth/RequireRole), `hub_test.go` (yayın yönlendirme + unregister).
 
+### Sonraya bırakılanlar (2026-07-13'te kaydedildi, ileride yapılacak)
+Aşağıdaki üç iş bilinçli olarak ertelendi; sırası gelince ele alınacak:
+
+- ⏳ **`generate-certs.sh` şüphesi.** İnteraktif akışta prompt sırasıyla ilgili gözlemlenen tuhaf davranışın (CA/Server alanlarının karışması) kök nedeni araştırılacak. (Bkz. "Kalan Eksikler" #12.)
+- ⏳ **`cols`/`rows` migration.** Eski deploy'larda `sessions` tablosuna `cols`/`rows` kolonlarının eklenmesi için düzgün bir migration yolu (idempotent `ADD COLUMN IF NOT EXISTS` veya otomatik migration) sağlanacak. (Bkz. "Kalan Eksikler" #13.)
+- ⏳ **CLI ↔ UI özellik paritesi kontrolü.** Projede "CLI ile UI'daki her şeyin yapılabilmesi" vaat edilmişti. UI'daki tüm yeteneklerin (sunucu/kullanıcı/anahtar/kural CRUD, oturum listeleme/sonlandırma, erişim talepleri onay akışı, anahtar yasaklama, denetim kaydı, komut arama, ayarlar/bildirim, RBAC yönetici yönetimi, agent kurulumu, sertifika yönetimi, 2FA, kayıt saklama, asciicast dışa aktarma vb.) CLI'da karşılığı olup olmadığı madde madde denetlenecek; eksikler listelenip CLI'a eklenecek. Bu denetim henüz **yapılmadı**.
+
 ---
 
 ## ⚠️ Kalan Eksikler / Bilinen Riskler
@@ -192,11 +201,12 @@ Ana yol haritası maddeleri tamamlandı. Sıradaki iş, "Kalan Eksikler"deki 11 
 11. ~~`guardian-server`: auth/agent_auth/websocket/hub middleware testleri yok~~ — ✅ **BÜYÜK ÖLÇÜDE ÇÖZÜLDÜ (2026-07-13).** `agent_auth_middleware_test.go` (mTLS kabul / token yedeği / reddetme, gerçek TLS), `auth_middleware_test.go` (`bearerToken` ayrıştırma, `AdminAuth` token'sız 401, `RequireRole` kimliksiz/yetersiz/yeterli), `hub_test.go` (yayın yalnızca eşleşen oturuma, unregister sonrası teslimat yok). Ayrıca test DB olmayan ortamda `handlers` paketi artık `requireDB` ile DB testlerini atlayıp DB'siz testleri koşabiliyor. Not: `websocket_handler.go` uçtan uca WS akışı hâlâ birim testsiz (canlı bağlantı gerektiriyor).
 
 ### Diğer
-12. `generate-certs.sh` betiğinde interaktif akışta prompt sırasıyla ilgili şüpheli bir davranış gözlemlendi (test sırasında non-interactive girdi verilince CA/Server alanları beklenmedik şekilde karıştı) — kök neden araştırılmadı, betik elle/interaktif kullanıldığında sorun olmayabilir ama doğrulanmadı.
-13. Mevcut (bu değişiklikten önce) deploy edilmiş sunucularda `sessions` tablosuna `cols`/`rows` kolonlarının manuel eklenmesi gerekiyor:
+12. ⏳ **(SONRAYA BIRAKILDI — 2026-07-13)** `generate-certs.sh` betiğinde interaktif akışta prompt sırasıyla ilgili şüpheli bir davranış gözlemlendi (test sırasında non-interactive girdi verilince CA/Server alanları beklenmedik şekilde karıştı) — kök neden araştırılmadı, betik elle/interaktif kullanıldığında sorun olmayabilir ama doğrulanmadı. **Kök neden ileride araştırılacak.**
+13. ⏳ **(SONRAYA BIRAKILDI — 2026-07-13)** Mevcut (bu değişiklikten önce) deploy edilmiş sunucularda `sessions` tablosuna `cols`/`rows` kolonlarının manuel eklenmesi gerekiyor. **İleride düzgün/idempotent bir migration yolu sağlanacak.** Geçici manuel komut:
     ```sql
     ALTER TABLE sessions ADD COLUMN cols integer, ADD COLUMN rows integer;
     ```
+14. ⏳ **(SONRAYA BIRAKILDI — 2026-07-13)** CLI ↔ UI özellik paritesi denetlenecek: UI'daki tüm yeteneklerin CLI'da karşılığı olup olmadığı kontrol edilip eksikler CLI'a eklenecek. (Ayrıntı: "Sırada → Sonraya bırakılanlar".)
 
 ### Windows'ta guardian-server (sunucu) çalıştırma — durum ve eksikler (2026-07-13)
 
