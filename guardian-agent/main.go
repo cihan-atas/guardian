@@ -138,7 +138,7 @@ func handleProxy() {
 	}
 
 	width, height := getTerminalSize()
-	ruleID, sessionID := parseFlagsAndStartSession(config, width, height)
+	_, sessionID, validUntil := parseFlagsAndStartSession(config, width, height)
 	log.Printf("✅ Sunucuda oturum başarıyla başlatıldı. Session ID: %d", sessionID)
 
 	if err := createPidFile(sessionID); err != nil {
@@ -199,7 +199,11 @@ func handleProxy() {
 		session.Close()
 	}()
 
-	if validUntil, err := getRuleValidity(ruleID, config); err == nil && validUntil != nil {
+	// Sunucu tarafındaki scheduler'ın "terminate" komutuna ek olarak, ajan
+	// kendi tarafında da süre dolumunu zorlar (ikinci savunma katmanı).
+	// valid_until, oturum başlatılırken sunucudan alınır (erişim kuralının
+	// valid_until'i); yoksa (süresiz kural) client-side zamanlayıcı kurulmaz.
+	if validUntil != nil {
 		go enforceSessionTimeout(session, sessionID, *validUntil, config)
 	}
 
@@ -218,7 +222,7 @@ func handleProxy() {
 	}
 }
 
-func parseFlagsAndStartSession(config *Config, width, height int) (int, int) {
+func parseFlagsAndStartSession(config *Config, width, height int) (int, int, *time.Time) {
 	proxyFlags := flag.NewFlagSet("proxy", flag.ExitOnError)
 	ruleID := proxyFlags.Int("rule-id", 0, "Oturumla ilişkili erişim kuralı ID'si")
 	if err := proxyFlags.Parse(os.Args[2:]); err != nil {
@@ -229,15 +233,11 @@ func parseFlagsAndStartSession(config *Config, width, height int) (int, int) {
 	}
 	log.Printf("🚀 SSH Proxy modu başlatıldı. Kural ID: %d", *ruleID)
 
-	sessionID, _, err := startSessionOnServer(*ruleID, config, width, height)
+	sessionID, validUntil, err := startSessionOnServer(*ruleID, config, width, height)
 	if err != nil {
 		log.Fatalf("Sunucuda oturum başlatılamadı: %v", err)
 	}
-	return *ruleID, sessionID
-}
-
-func getRuleValidity(ruleID int, config *Config) (*time.Time, error) {
-	return nil, errors.New("not implemented")
+	return *ruleID, sessionID, validUntil
 }
 
 func connectWebSocket(sessionID int, config *Config) *websocket.Conn {
