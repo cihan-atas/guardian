@@ -209,6 +209,10 @@ func handleProxy() {
 
 	setupPipes(session, ws, width, height)
 
+	// Admin terminali yeniden boyutlandığında (SIGWINCH) yeni boyutu aktif
+	// oturuma ilet (Unix'te; Windows'ta işlemsiz).
+	go watchWindowSize(session)
+
 	if err := session.Shell(); err != nil {
 		endSessionOnServer(sessionID, "error_shell", config)
 		log.Fatalf("Uzakta shell başlatılamadı: %v", err)
