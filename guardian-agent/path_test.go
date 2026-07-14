@@ -74,3 +74,22 @@ func TestGetAuthorizedKeysPath_UnknownUser(t *testing.T) {
 		t.Fatal("var olmayan kullanıcı için hata bekleniyordu")
 	}
 }
+
+// TestWindowsAdminAuthorizedKeysPath, Windows yönetici anahtar yolu üreten saf
+// yardımcıyı her platformda doğrular (yol ayracı GOOS'a göre değiştiğinden
+// karşılaştırma da filepath.Join ile yapılır).
+func TestWindowsAdminAuthorizedKeysPath(t *testing.T) {
+	// ProgramData verildiğinde onu kullanır.
+	if got, want := windowsAdminAuthorizedKeysPath(`D:\PD`), filepath.Join(`D:\PD`, "ssh", "administrators_authorized_keys"); got != want {
+		t.Errorf("verilen ProgramData kullanılmalıydı: %q != %q", got, want)
+	}
+	// Boş ProgramData → varsayılan C:\ProgramData.
+	got := windowsAdminAuthorizedKeysPath("")
+	want := filepath.Join(`C:\ProgramData`, "ssh", "administrators_authorized_keys")
+	if got != want {
+		t.Errorf("boş ProgramData'da varsayılan beklenirdi: %q != %q", got, want)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(got), "ssh/administrators_authorized_keys") {
+		t.Errorf("yol administrators_authorized_keys ile bitmeliydi: %q", got)
+	}
+}

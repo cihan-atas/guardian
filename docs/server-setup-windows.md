@@ -314,10 +314,31 @@ IIS ile:
 
 ---
 
+## Doğrulama (smoke test)
+
+Gerçek bir Windows host'ta kurulumu doğrulamak için otomatik duman testi:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-windows.ps1
+```
+
+Bu betik ağır bağımlılık gerektirmeyen adımları otomatik doğrular ve PASS/FAIL
+raporlar: (1) Go/OpenSSH ön koşulları, (2) `guardian-server.exe` +
+`guardian-agent.exe` derleme, (3) **openssl'siz sertifika bootstrap** —
+`guardian-server gen-certs` ile üretilen `server.crt`'nin `ca.crt` tarafından
+imzalanmışlığı ve `127.0.0.1` SAN'ı .NET X509 API'siyle doğrulanır, (4) birim
+testler (`go test ./...`; Windows'a özgü build-tag'li testler dahil —
+`administrators_authorized_keys` yolu, `ProgramData` config yolu). Betiğin
+sonunda, PostgreSQL + OpenSSH sshd gerektiren **canlı uçtan uca akış** için elle
+takip edilecek bir kontrol listesi yazdırılır.
+
+---
+
 ## Bilinen sınırlamalar
 
 - Bu akış Windows'ta uçtan uca gerçek bir Windows Server üzerinde
   doğrulanmamıştır; adımlar Linux kurulumu ve mevcut Windows agent akışından
-  türetilmiştir. Gerçek ortamda doğrulanması önerilir.
+  türetilmiştir. `scripts\verify-windows.ps1` ile otomatik kısmı doğrulanabilir;
+  canlı SSH oturumu akışı gerçek ortamda elle doğrulanmalıdır.
 - `guardian-server` kendi başına dosyaya log yazmaz; servis çıktısını görmek
   için NSSM gibi bir sarmalayıcı ya da elle çalıştırma önerilir (Adım 4).

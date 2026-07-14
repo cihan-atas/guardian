@@ -32,13 +32,20 @@ func getAuthorizedKeysPath(username string) (string, error) {
 	// kullanıcıların admin sayılacağı GUARDIAN_WINDOWS_ADMIN_USERS (virgüllü)
 	// ile belirtilir. Diğer tüm durumlar per-user dosyayı kullanır.
 	if runtime.GOOS == "windows" && isWindowsAdminUser(username) {
-		pd := os.Getenv("ProgramData")
-		if pd == "" {
-			pd = `C:\ProgramData`
-		}
-		return filepath.Join(pd, "ssh", "administrators_authorized_keys"), nil
+		return windowsAdminAuthorizedKeysPath(os.Getenv("ProgramData")), nil
 	}
 	return filepath.Join(usr.HomeDir, ".ssh", "authorized_keys"), nil
+}
+
+// windowsAdminAuthorizedKeysPath, Windows yönetici hesapları için OpenSSH'in
+// okuduğu paylaşımlı administrators_authorized_keys yolunu döndürür. programData
+// boşsa varsayılan C:\ProgramData kullanılır. Saf/yan etkisiz olduğundan her
+// platformda test edilebilir (yol ayracı GOOS'a göre değişir).
+func windowsAdminAuthorizedKeysPath(programData string) string {
+	if programData == "" {
+		programData = `C:\ProgramData`
+	}
+	return filepath.Join(programData, "ssh", "administrators_authorized_keys")
 }
 
 // isWindowsAdminUser, kullanıcının GUARDIAN_WINDOWS_ADMIN_USERS listesinde olup
