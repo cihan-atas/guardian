@@ -44,8 +44,16 @@ func CreatePublicKey(db *sql.DB) http.HandlerFunc {
 		}
 		pk.FingerprintSHA256 = fingerprint
 
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("Transaction başlatılamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
 		sqlStatement := `INSERT INTO public_keys (key_name, ssh_public_key, fingerprint_sha256) VALUES ($1, $2, $3) RETURNING id, created_at`
-		err = db.QueryRow(sqlStatement, pk.KeyName, pk.SshPublicKey, pk.FingerprintSHA256).Scan(&pk.ID, &pk.CreatedAt)
+		err = tx.QueryRow(sqlStatement, pk.KeyName, pk.SshPublicKey, pk.FingerprintSHA256).Scan(&pk.ID, &pk.CreatedAt)
 		if err != nil {
 			services.Record(db, r, services.AuditLog{
 				Action:       services.ActionCreateKey,
@@ -57,12 +65,16 @@ func CreatePublicKey(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		services.Record(db, r, services.AuditLog{
+		if err := commitWithAudit(tx, r, services.AuditLog{
 			Action:     services.ActionCreateKey,
 			TargetType: "key",
 			TargetID:   pk.ID,
 			Status:     "SUCCESS",
-		})
+		}); err != nil {
+			log.Printf("Anahtar oluşturma commit/audit hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(pk)
@@ -89,9 +101,17 @@ func PatchPublicKey(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("Transaction başlatılamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
 		query := `UPDATE public_keys SET key_name = $1 WHERE id = $2 RETURNING id, key_name, ssh_public_key, fingerprint_sha256, created_at`
 		var updatedKey models.PublicKey
-		err = db.QueryRow(query, newKeyName, id).Scan(&updatedKey.ID, &updatedKey.KeyName, &updatedKey.SshPublicKey, &updatedKey.FingerprintSHA256, &updatedKey.CreatedAt)
+		err = tx.QueryRow(query, newKeyName, id).Scan(&updatedKey.ID, &updatedKey.KeyName, &updatedKey.SshPublicKey, &updatedKey.FingerprintSHA256, &updatedKey.CreatedAt)
 		if err != nil {
 			services.Record(db, r, services.AuditLog{
 				Action:       services.ActionPatchKey,
@@ -108,12 +128,16 @@ func PatchPublicKey(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		services.Record(db, r, services.AuditLog{
+		if err := commitWithAudit(tx, r, services.AuditLog{
 			Action:     services.ActionPatchKey,
 			TargetType: "key",
 			TargetID:   id,
 			Status:     "SUCCESS",
-		})
+		}); err != nil {
+			log.Printf("Anahtar PATCH commit/audit hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(updatedKey)
@@ -149,7 +173,15 @@ func DeletePublicKey(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		result, err := db.Exec("DELETE FROM public_keys WHERE id = $1", keyID)
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("Transaction başlatılamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		result, err := tx.Exec("DELETE FROM public_keys WHERE id = $1", keyID)
 		if err != nil {
 			services.Record(db, r, services.AuditLog{
 				Action:       services.ActionDeleteKey,
@@ -166,12 +198,16 @@ func DeletePublicKey(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		services.Record(db, r, services.AuditLog{
+		if err := commitWithAudit(tx, r, services.AuditLog{
 			Action:     services.ActionDeleteKey,
 			TargetType: "key",
 			TargetID:   keyID,
 			Status:     "SUCCESS",
-		})
+		}); err != nil {
+			log.Printf("Anahtar silme commit/audit hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

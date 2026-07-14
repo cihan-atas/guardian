@@ -102,12 +102,31 @@ func UpdateSettings(db *sql.DB) http.HandlerFunc {
 			updates[services.SettingSMTPPass] = in.SMTPPass
 		}
 
+		// Tüm ayar yazımları + SUCCESS denetim kaydı tek transaction'da yapılır:
+		// ya hepsi birlikte kalıcı olur ya hiçbiri (kısmi ayar güncellemesi olmaz).
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
 		for k, v := range updates {
-			if err := services.SaveSetting(db, k, v); err != nil {
+			if err := services.SaveSetting(tx, k, v); err != nil {
 				log.Printf("Ayar kaydedilemedi (%s): %v", k, err)
 				http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
 				return
 			}
+		}
+
+		if err := commitWithAudit(tx, r, services.AuditLog{
+			Action:     "UPDATE_SETTINGS",
+			TargetType: "settings",
+			Status:     "SUCCESS",
+		}); err != nil {
+			log.Printf("Ayar commit/audit hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
 		}
 
 		// Kaydettikten sonra canlı yapılandırmayı yeniden yükle.
@@ -123,12 +142,6 @@ func UpdateSettings(db *sql.DB) http.HandlerFunc {
 				log.Printf("[WARN] Kayıt sonrası saklama temizliği başarısız: %v", err)
 			}
 		}()
-
-		services.Record(db, r, services.AuditLog{
-			Action:     "UPDATE_SETTINGS",
-			TargetType: "settings",
-			Status:     "SUCCESS",
-		})
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))

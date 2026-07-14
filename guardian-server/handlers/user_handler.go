@@ -33,9 +33,17 @@ func CreateSystemUser(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("Transaction başlatılamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
 		sqlStatement := `INSERT INTO system_users (username, description) VALUES ($1, $2) RETURNING id, created_at`
 		// user.Description zaten sql.NullString tipinde olduğu için doğrudan veritabanına gönderilebilir.
-		err := db.QueryRow(sqlStatement, user.Username, user.Description).Scan(&user.ID, &user.CreatedAt)
+		err = tx.QueryRow(sqlStatement, user.Username, user.Description).Scan(&user.ID, &user.CreatedAt)
 		if err != nil {
 			services.Record(db, r, services.AuditLog{
 				Action:       services.ActionCreateUser,
@@ -47,12 +55,16 @@ func CreateSystemUser(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		services.Record(db, r, services.AuditLog{
+		if err := commitWithAudit(tx, r, services.AuditLog{
 			Action:     services.ActionCreateUser,
 			TargetType: "user",
 			TargetID:   user.ID,
 			Status:     "SUCCESS",
-		})
+		}); err != nil {
+			log.Printf("Kullanıcı oluşturma commit/audit hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(user)
@@ -89,9 +101,17 @@ func PatchSystemUser(db *sql.DB) http.HandlerFunc {
 			descValue.Valid = false
 		}
 
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("Transaction başlatılamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
 		query := "UPDATE system_users SET description = $1 WHERE id = $2 RETURNING id, username, description, created_at"
 		var updatedUser models.SystemUser
-		err = db.QueryRow(query, descValue, userID).Scan(&updatedUser.ID, &updatedUser.Username, &updatedUser.Description, &updatedUser.CreatedAt)
+		err = tx.QueryRow(query, descValue, userID).Scan(&updatedUser.ID, &updatedUser.Username, &updatedUser.Description, &updatedUser.CreatedAt)
 		if err != nil {
 			services.Record(db, r, services.AuditLog{
 				Action:       services.ActionPatchUser,
@@ -108,12 +128,16 @@ func PatchSystemUser(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		services.Record(db, r, services.AuditLog{
+		if err := commitWithAudit(tx, r, services.AuditLog{
 			Action:     services.ActionPatchUser,
 			TargetType: "user",
 			TargetID:   userID,
 			Status:     "SUCCESS",
-		})
+		}); err != nil {
+			log.Printf("Kullanıcı PATCH commit/audit hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(updatedUser)
@@ -150,7 +174,15 @@ func DeleteSystemUser(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		result, err := db.Exec("DELETE FROM system_users WHERE id = $1", userID)
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("Transaction başlatılamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		result, err := tx.Exec("DELETE FROM system_users WHERE id = $1", userID)
 		if err != nil {
 			services.Record(db, r, services.AuditLog{
 				Action:       services.ActionDeleteUser,
@@ -167,12 +199,16 @@ func DeleteSystemUser(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		services.Record(db, r, services.AuditLog{
+		if err := commitWithAudit(tx, r, services.AuditLog{
 			Action:     services.ActionDeleteUser,
 			TargetType: "user",
 			TargetID:   userID,
 			Status:     "SUCCESS",
-		})
+		}); err != nil {
+			log.Printf("Kullanıcı silme commit/audit hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

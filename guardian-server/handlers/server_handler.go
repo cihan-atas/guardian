@@ -27,8 +27,16 @@ func CreateServer(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Geçersiz istek gövdesi", http.StatusBadRequest)
 			return
 		}
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("Transaction başlatılamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
 		sqlStatement := `INSERT INTO servers (hostname, ip_address, description) VALUES ($1, $2, $3) RETURNING id, created_at`
-		err := db.QueryRow(sqlStatement, server.Hostname, server.IPAddress, server.Description).Scan(&server.ID, &server.CreatedAt)
+		err = tx.QueryRow(sqlStatement, server.Hostname, server.IPAddress, server.Description).Scan(&server.ID, &server.CreatedAt)
 		if err != nil {
 			log.Printf("Veritabanına kayıt eklenemedi: %v", err)
 			services.Record(db, r, services.AuditLog{
@@ -40,12 +48,17 @@ func CreateServer(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
 			return
 		}
-		services.Record(db, r, services.AuditLog{
+		// Mutasyon + SUCCESS denetim kaydı tek transaction'da atomik commit edilir.
+		if err := commitWithAudit(tx, r, services.AuditLog{
 			Action:     services.ActionCreateServer,
 			TargetType: "server",
 			TargetID:   server.ID,
 			Status:     "SUCCESS",
-		})
+		}); err != nil {
+			log.Printf("Sunucu oluşturma commit/audit hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(server)
@@ -214,8 +227,16 @@ func PatchServer(db *sql.DB) http.HandlerFunc {
 		query += fmt.Sprintf(" WHERE id = $%d RETURNING id, hostname, ip_address, description, created_at", i)
 		args = append(args, id)
 
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("Transaction başlatılamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
 		var updatedServer models.Server
-		err = db.QueryRow(query, args...).Scan(
+		err = tx.QueryRow(query, args...).Scan(
 			&updatedServer.ID,
 			&updatedServer.Hostname,
 			&updatedServer.IPAddress,
@@ -239,12 +260,16 @@ func PatchServer(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		services.Record(db, r, services.AuditLog{
+		if err := commitWithAudit(tx, r, services.AuditLog{
 			Action:     services.ActionPatchServer,
 			TargetType: "server",
 			TargetID:   id,
 			Status:     "SUCCESS",
-		})
+		}); err != nil {
+			log.Printf("Sunucu PATCH commit/audit hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -281,7 +306,15 @@ func DeleteServer(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		result, err := db.Exec("DELETE FROM servers WHERE id = $1", id)
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("Transaction başlatılamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		result, err := tx.Exec("DELETE FROM servers WHERE id = $1", id)
 		if err != nil {
 			services.Record(db, r, services.AuditLog{
 				Action:       services.ActionDeleteServer,
@@ -298,12 +331,16 @@ func DeleteServer(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		services.Record(db, r, services.AuditLog{
+		if err := commitWithAudit(tx, r, services.AuditLog{
 			Action:     services.ActionDeleteServer,
 			TargetType: "server",
 			TargetID:   id,
 			Status:     "SUCCESS",
-		})
+		}); err != nil {
+			log.Printf("Sunucu silme commit/audit hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

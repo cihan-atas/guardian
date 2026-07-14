@@ -62,9 +62,11 @@ func LoadSettings(db *sql.DB) (map[string]string, error) {
 	return out, rows.Err()
 }
 
-// SaveSetting, tek bir ayarı upsert eder.
-func SaveSetting(db *sql.DB, key, value string) error {
-	_, err := db.Exec(`
+// SaveSetting, tek bir ayarı upsert eder. `ex` hem *sql.DB hem *sql.Tx olabilir
+// (auditExecer), böylece birden çok ayar + denetim kaydı tek transaction'da
+// atomik yazılabilir.
+func SaveSetting(ex auditExecer, key, value string) error {
+	_, err := ex.Exec(`
 		INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, NOW() AT TIME ZONE 'utc')
 		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
 		key, value)

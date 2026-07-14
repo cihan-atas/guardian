@@ -184,8 +184,16 @@ func CreateRule(db *sql.DB, ac agentclient.AgentCommunicator) http.HandlerFunc {
 			return
 		}
 
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("Transaction başlatılamadı: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
 		sqlStatement := `INSERT INTO access_rules (server_id, public_key_id, system_user_id, valid_from, valid_until) VALUES ($1, $2, $3, $4, $5) RETURNING id, status, created_at`
-		err = db.QueryRow(sqlStatement, rule.ServerID, rule.PublicKeyID, rule.SystemUserID, rule.ValidFrom, rule.ValidUntil).Scan(&rule.ID, &rule.Status, &rule.CreatedAt)
+		err = tx.QueryRow(sqlStatement, rule.ServerID, rule.PublicKeyID, rule.SystemUserID, rule.ValidFrom, rule.ValidUntil).Scan(&rule.ID, &rule.Status, &rule.CreatedAt)
 		if err != nil {
 			services.Record(db, r, services.AuditLog{
 				Action:       services.ActionCreateRule,
@@ -197,12 +205,16 @@ func CreateRule(db *sql.DB, ac agentclient.AgentCommunicator) http.HandlerFunc {
 			return
 		}
 
-		services.Record(db, r, services.AuditLog{
+		if err := commitWithAudit(tx, r, services.AuditLog{
 			Action:     services.ActionCreateRule,
 			TargetType: "rule",
 			TargetID:   rule.ID,
 			Status:     "SUCCESS",
-		})
+		}); err != nil {
+			log.Printf("Kural oluşturma commit/audit hatası: %v", err)
+			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(rule)
@@ -301,8 +313,11 @@ func DeleteRule(db *sql.DB, ac agentclient.AgentCommunicator) http.HandlerFunc {
 			return
 		}
 
-		if err := tx.Commit(); err != nil {
-			log.Printf("[ERROR] Transaction onaylanamadı: %v", err)
+		// SUCCESS denetim kaydı mutasyonla aynı transaction'a yazılıp birlikte
+		// commit edilir (atomik bütünlük). Agent tarafı yan etkiler commit'ten
+		// sonra best-effort yapılır.
+		if err := commitWithAudit(tx, r, services.AuditLog{Action: services.ActionDeleteRule, TargetType: "rule", TargetID: ruleID, Status: "SUCCESS"}); err != nil {
+			log.Printf("[ERROR] Kural silme commit/audit hatası: %v", err)
 			http.Error(w, "İşlem onaylanamadı", http.StatusInternalServerError)
 			return
 		}
@@ -324,7 +339,6 @@ func DeleteRule(db *sql.DB, ac agentclient.AgentCommunicator) http.HandlerFunc {
 			}
 		}
 
-		services.Record(db, r, services.AuditLog{Action: services.ActionDeleteRule, TargetType: "rule", TargetID: ruleID, Status: "SUCCESS"})
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -465,8 +479,10 @@ func PatchRule(db *sql.DB, ac agentclient.AgentCommunicator) http.HandlerFunc {
 			}
 		}
 
-		if err := tx.Commit(); err != nil {
-			log.Printf("[ERROR] Transaction onaylanamadı: %v", err)
+		// SUCCESS denetim kaydı mutasyonla aynı transaction'a yazılıp birlikte
+		// commit edilir (atomik bütünlük).
+		if err := commitWithAudit(tx, r, services.AuditLog{Action: services.ActionPatchRule, TargetType: "rule", TargetID: id, Status: "SUCCESS"}); err != nil {
+			log.Printf("[ERROR] Kural PATCH commit/audit hatası: %v", err)
 			http.Error(w, "Sunucu hatası", http.StatusInternalServerError)
 			return
 		}
@@ -489,7 +505,6 @@ func PatchRule(db *sql.DB, ac agentclient.AgentCommunicator) http.HandlerFunc {
 			}()
 		}
 
-		services.Record(db, r, services.AuditLog{Action: services.ActionPatchRule, TargetType: "rule", TargetID: id, Status: "SUCCESS"})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(updatedRule)

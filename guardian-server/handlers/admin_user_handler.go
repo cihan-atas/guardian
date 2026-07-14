@@ -87,8 +87,15 @@ func CreateAdminUser(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
 			return
 		}
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
 		var id int
-		err = db.QueryRow(
+		err = tx.QueryRow(
 			`INSERT INTO admin_users (username, password_hash, role, display_name) VALUES ($1,$2,$3,$4) RETURNING id`,
 			req.Username, hash, req.Role, req.DisplayName,
 		).Scan(&id)
@@ -100,7 +107,10 @@ func CreateAdminUser(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Yönetici oluşturulamadı.", http.StatusInternalServerError)
 			return
 		}
-		services.Record(db, r, services.AuditLog{Action: services.ActionCreateAdmin, TargetType: "admin_user", TargetID: id, Status: "SUCCESS"})
+		if err := commitWithAudit(tx, r, services.AuditLog{Action: services.ActionCreateAdmin, TargetType: "admin_user", TargetID: id, Status: "SUCCESS"}); err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
 		writeJSON(w, http.StatusCreated, adminUserDTO{ID: id, Username: req.Username, Role: req.Role, DisplayName: req.DisplayName})
 	}
 }
@@ -181,15 +191,27 @@ func UpdateAdminUser(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		args = append(args, id)
-		if _, err := db.Exec(`UPDATE admin_users SET `+strings.Join(set, ", ")+` WHERE id = $`+strconv.Itoa(i), args...); err != nil {
+
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		if _, err := tx.Exec(`UPDATE admin_users SET `+strings.Join(set, ", ")+` WHERE id = $`+strconv.Itoa(i), args...); err != nil {
 			http.Error(w, "Güncellenemedi.", http.StatusInternalServerError)
 			return
 		}
-		// Parola değişti ya da hesap devre dışı bırakıldıysa oturumları düşür.
+		if err := commitWithAudit(tx, r, services.AuditLog{Action: services.ActionUpdateAdmin, TargetType: "admin_user", TargetID: id, Status: "SUCCESS"}); err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
+		// Parola değişti ya da hesap devre dışı bırakıldıysa oturumları düşür
+		// (commit sonrası; oturum temizliği ayrı bir yan etki).
 		if (req.Password != nil && *req.Password != "") || (req.Disabled != nil && *req.Disabled) {
 			services.InvalidateUserSessions(db, id)
 		}
-		services.Record(db, r, services.AuditLog{Action: services.ActionUpdateAdmin, TargetType: "admin_user", TargetID: id, Status: "SUCCESS"})
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -211,11 +233,21 @@ func DeleteAdminUser(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Sistemde en az bir aktif admin kalmalıdır.", http.StatusBadRequest)
 			return
 		}
-		if _, err := db.Exec(`DELETE FROM admin_users WHERE id = $1`, id); err != nil {
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		if _, err := tx.Exec(`DELETE FROM admin_users WHERE id = $1`, id); err != nil {
 			http.Error(w, "Silinemedi.", http.StatusInternalServerError)
 			return
 		}
-		services.Record(db, r, services.AuditLog{Action: services.ActionDeleteAdmin, TargetType: "admin_user", TargetID: id, Status: "SUCCESS"})
+		if err := commitWithAudit(tx, r, services.AuditLog{Action: services.ActionDeleteAdmin, TargetType: "admin_user", TargetID: id, Status: "SUCCESS"}); err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

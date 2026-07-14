@@ -83,8 +83,16 @@ func CreateAccessRequest(db *sql.DB) http.HandlerFunc {
 		if ident != nil {
 			reqBy = ident.ID
 		}
+
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
 		var id int
-		err := db.QueryRow(`
+		err = tx.QueryRow(`
 			INSERT INTO access_rules (server_id, public_key_id, system_user_id, valid_from, valid_until, status, requested_by, request_reason)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
 			body.ServerID, body.PublicKeyID, body.SystemUserID, body.ValidFrom, body.ValidUntil,
@@ -94,7 +102,10 @@ func CreateAccessRequest(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Talep oluşturulamadı.", http.StatusInternalServerError)
 			return
 		}
-		services.Record(db, r, services.AuditLog{Action: services.ActionRequestAccess, TargetType: "access_request", TargetID: id, Status: "SUCCESS"})
+		if err := commitWithAudit(tx, r, services.AuditLog{Action: services.ActionRequestAccess, TargetType: "access_request", TargetID: id, Status: "SUCCESS"}); err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
 		writeJSON(w, http.StatusCreated, map[string]int{"id": id})
 	}
 }
@@ -208,14 +219,25 @@ func ApproveAccessRequest(db *sql.DB, ac agentclient.AgentCommunicator) http.Han
 		if ident != nil {
 			approver = ident.ID
 		}
-		if _, err := db.Exec(
+
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		if _, err := tx.Exec(
 			`UPDATE access_rules SET status = 'pending', approved_by = $1, decided_at = now() WHERE id = $2`,
 			approver, id,
 		); err != nil {
 			http.Error(w, "Onaylanamadı.", http.StatusInternalServerError)
 			return
 		}
-		services.Record(db, r, services.AuditLog{Action: services.ActionApproveAccess, TargetType: "access_request", TargetID: id, Status: "SUCCESS"})
+		if err := commitWithAudit(tx, r, services.AuditLog{Action: services.ActionApproveAccess, TargetType: "access_request", TargetID: id, Status: "SUCCESS"}); err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -238,7 +260,15 @@ func RejectAccessRequest(db *sql.DB) http.HandlerFunc {
 		if ident != nil {
 			approver = ident.ID
 		}
-		res, err := db.Exec(
+
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		res, err := tx.Exec(
 			`UPDATE access_rules SET status = 'rejected', approved_by = $1, reject_reason = $2, decided_at = now()
 			 WHERE id = $3 AND status = $4`,
 			approver, strings.TrimSpace(body.Reason), id, services.StatusAwaitingApproval,
@@ -251,7 +281,10 @@ func RejectAccessRequest(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Talep bulunamadı veya zaten karara bağlanmış.", http.StatusConflict)
 			return
 		}
-		services.Record(db, r, services.AuditLog{Action: services.ActionRejectAccess, TargetType: "access_request", TargetID: id, Status: "SUCCESS"})
+		if err := commitWithAudit(tx, r, services.AuditLog{Action: services.ActionRejectAccess, TargetType: "access_request", TargetID: id, Status: "SUCCESS"}); err != nil {
+			http.Error(w, "Sunucu hatası.", http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
