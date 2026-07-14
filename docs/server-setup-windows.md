@@ -102,6 +102,19 @@ güvenli varsayılanı koruyun. İlk açılışta `schema.sql` otomatik içe akt
 
 ### Seçenek B: Yerel PostgreSQL kurulumu
 
+**Otomatik (önerilen):** `scripts\install-postgres-windows.ps1` rolü + veritabanını
+oluşturur, `schema.sql`'i (yalnızca temel tablolar yoksa) uygular, yetkileri verir
+ve isteğe bağlı `POSTGRES_*` servis ortam değişkenlerini ayarlar. İdempotenttir
+(tekrar çalıştırılabilir):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-postgres-windows.ps1 `
+    -DbPassword 'DEGISTIR' -SuperPassword 'postgres-parolasi' -SetServiceEnv
+# psql yoksa ve Chocolatey varsa: -InstallIfMissing ekleyin
+```
+
+**Elle:**
+
 1. **PostgreSQL for Windows**'u kurun (EnterpriseDB installer veya
    `winget install PostgreSQL.PostgreSQL`).
 2. Veritabanı ve kullanıcıyı oluşturun (kurulumla gelen `psql`, genellikle
@@ -110,7 +123,8 @@ güvenli varsayılanı koruyun. İlk açılışta `schema.sql` otomatik içe akt
    & "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -c "CREATE USER guardian_user WITH PASSWORD 'DEGISTIR';"
    & "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -c "CREATE DATABASE guardian_db OWNER guardian_user;"
    ```
-3. Şemayı içe aktarın (repo'daki `schema.sql`):
+3. Şemayı içe aktarın (repo'daki `schema.sql`) — yalnızca **bir kez**; temel
+   tablolar `CREATE TABLE` (IF NOT EXISTS yok) olduğundan yeniden uygulanamaz:
    ```powershell
    & "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U guardian_user -d guardian_db -f C:\path\to\schema.sql
    ```
