@@ -1,9 +1,10 @@
 # Guardian — İlerleme Durumu
 
-> Bu dosya, projede yapılan çalışmaları ve bilinen eksikleri takip etmek için tutulur. Son güncelleme: 2026-07-13.
+> Bu dosya, projede yapılan çalışmaları ve bilinen eksikleri takip etmek için tutulur. Son güncelleme: 2026-07-14.
 >
+> **2026-07-14 tamamlananlar (madde #23):** audit aynı-transaction bütünlüğü, agent SSH/proxy/WS uçtan uca testi (+ ortaya çıkan WS eşzamanlı yazım düzeltmesi), Windows runtime doğrulama betiği + Windows'a özgü yol testleri, PostgreSQL Windows kurulum betiği.
 > **2026-07-13 tamamlananlar (madde #22):** generate-certs.sh sağlamlaştırma, cols/rows migration, CLI↔UI paritesi, Windows sunucu desteği (config yükleyici + gen-certs alt-komutu + doküman/script), guardian-agent ek testleri.
-> **Kalan (harici ortam / daha büyük iş):** audit aynı-transaction bütünlüğü, agent SSH/proxy/WS uçtan uca testi, Windows agent+server runtime doğrulaması (gerçek Windows host). Detay: "Yapılacaklar → Sonraya".
+> **Kalan (harici ortam):** yalnızca gerçek Windows host'ta canlı SSH oturumu uçtan uca doğrulaması (betikle rehberlendi). Diğer tüm "Yapılacaklar" kapandı.
 
 ## Proje Özeti
 
@@ -159,6 +160,15 @@ Dört bağımsız modülde paralel çalışıldı; her biri kendi modülünde de
 - **guardian-agent ek testleri** (`guardian-agent`): 18 yeni birim testi (getHostKey, isWindowsAdminUser/defaultAgentConfigPath/getAuthorizedKeysPath, handler hata yolları, websocketWriter, authorized_keys güvenlik değişmezleri). Üretim kodu değişmedi.
 - **Doğrulama:** server/agent/cli linux derleme + testler geçiyor; server ve agent Windows cross-compile OK.
 
+### 23. Audit atomikliği + agent e2e testi + Windows runtime betikleri (2026-07-14)
+"Sonraya bırakılan" dört iş sırayla kapatıldı:
+
+- **Audit aynı-transaction bütünlüğü** (`guardian-server`): `services.RecordTx(execer)` denetim kaydını çağıranın tx/db'si üzerinden yazıp hatayı döndürüyor; `handlers.commitWithAudit(tx, r, log)` ortak yardımcısı SUCCESS kaydını mutasyonla **aynı transaction'a** yazıp commit ediyor (audit başarısızsa mutasyon rollback → "ya ikisi birden ya hiçbiri"). Atomik tx'e taşınan SUCCESS yolları: server/user/key CRUD, rule create/delete/patch, access-request create/approve/reject, admin_user create/update/delete, ayarlar (tüm anahtarlar tek tx), oturum sonlandırma (admin yolu). FAILURE kayıtları bilinçli olarak bağımsız (`Record`) kalıyor (bağlanacak mutasyon yok; rollback'te iz kaybolmamalı). LOGIN/2FA/cert-renew/agent-enroll DB-dışı veya servis-aracılı olduğundan kapsam dışı. `RecordTx` birim testleri eklendi.
+- **Agent SSH/proxy/WS uçtan uca testi** (`guardian-agent`): `e2e_proxy_test.go` in-process `x/crypto/ssh` sunucusu + gerçek WebSocket sunucusu üzerinden **üretim `setupPipes`**'i çalıştırıp kayıt veri yolunu doğruluyor (uzak shell çıktısı "output", istemci girişi "input" olayı; base64 çift-kodlama yok; stdin EOF'ta oturum kapanıyor). Canlı sshd/sunucu gerektirmez. **Test gerçek bir eşzamanlılık hatasını yüzeye çıkardı:** aynı WS bağlantısına üç kaynak (output/input yazıcıları + heartbeat) eşzamanlı yazıyordu; yeni thread-safe `wsConn` (mutex'li `WriteJSON`) yazımları serileştiriyor. `-race` ile doğrulandı.
+- **Windows runtime doğrulaması** (`scripts/verify-windows.ps1` + testler): Gerçek Windows host'ta çalışacak otomatik duman testi (ön koşullar, binary derleme, **openssl'siz `gen-certs`** ile üretilen server.crt'nin ca.crt-imzalılığı + 127.0.0.1 SAN doğrulaması via .NET X509, `go test`) + canlı akış için elle kontrol listesi. `windowsAdminAuthorizedKeysPath` saf yardımcıya ayrıldı; platform-bağımsız test + `//go:build windows` tam-dal testleri (`path_windows_test.go`). `gen-certs` davranışı Linux'ta doğrulandı (openssl verify OK, SAN 127.0.0.1); `GOOS=windows go vet ./...` (testler dahil) temiz.
+- **PostgreSQL Windows kurulum betiği** (`scripts/install-postgres-windows.ps1`): psql bul (yoksa Chocolatey), guardian rolü + DB oluştur, `schema.sql`'i **yalnızca temel tablolar yoksa** uygula (schema tek seferlik; `to_regclass` kontrolü), yetkiler, opsiyonel `POSTGRES_*` servis env'leri. İdempotent. SQL akışı yerel PostgreSQL 17'de uçtan uca doğrulandı (11 tablo, grant, guardian rolüyle bağlantı; yeniden-çalıştırmada schema atlanıyor).
+- **Doğrulama:** guardian-server + guardian-agent linux derleme/test (+ `-race`) geçiyor; ikisi de Windows cross-compile + windows vet temiz. PowerShell betikleri `pwsh` ile parse-doğrulandı.
+
 ---
 
 ## 🗺️ Yol Haritası / Planlanan Özellikler
@@ -205,10 +215,10 @@ Aşağıdaki üç iş 2026-07-13'te alt-ajanlarla tamamlandı:
 - ✅ **Windows sunucu doküman/scriptleri** — `docs/server-setup-windows.md` + `scripts/install-server-windows.ps1`. *(docs)*
 - ✅ **guardian-agent ek birim testleri** — 18 yeni test. *(guardian-agent)*
 
-### Sonraya (daha büyük / harici ortam gerektiren)
-- ⏳ **Audit aynı-transaction bütünlüğü** — mutasyon + audit tek DB transaction'ında (şu an senkron ama ayrı yazım).
-- ⏳ **Agent SSH/proxy/WS uçtan uca testi** — canlı sshd + sunucu gerektirir.
-- ⏳ **Windows agent runtime doğrulaması** — gerçek Windows host'ta uçtan uca.
+### Sonraya (daha büyük / harici ortam gerektiren) → ✅ TAMAMLANDI (2026-07-14, madde #23)
+- ✅ **Audit aynı-transaction bütünlüğü** — `RecordTx`/`commitWithAudit` ile mutasyon + SUCCESS audit tek DB transaction'ında (atomik).
+- ✅ **Agent SSH/proxy/WS uçtan uca testi** — in-process SSH + WS ile üretim `setupPipes` testi; canlı sshd gerektirmiyor. Ayrıca WS eşzamanlı yazım hatası bulunup düzeltildi (`wsConn`).
+- ✅ **Windows agent+server runtime doğrulaması** — `verify-windows.ps1` otomatik duman testi + Windows'a özgü yol testleri + `install-postgres-windows.ps1`. **Kalan tek şey:** gerçek Windows host'ta canlı SSH oturumu akışının elle çalıştırılması (betiğin kontrol listesiyle rehberlendi; bu ortamda Windows host yok).
 
 ---
 
