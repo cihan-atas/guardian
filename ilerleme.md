@@ -220,6 +220,9 @@ Aşağıdaki üç iş 2026-07-13'te alt-ajanlarla tamamlandı:
 - ✅ **Agent SSH/proxy/WS uçtan uca testi** — in-process SSH + WS ile üretim `setupPipes` testi; canlı sshd gerektirmiyor. Ayrıca WS eşzamanlı yazım hatası bulunup düzeltildi (`wsConn`).
 - ✅ **Windows agent+server runtime doğrulaması** — `verify-windows.ps1` otomatik duman testi + Windows'a özgü yol testleri + `install-postgres-windows.ps1`. **Kalan tek şey:** gerçek Windows host'ta canlı SSH oturumu akışının elle çalıştırılması (betiğin kontrol listesiyle rehberlendi; bu ortamda Windows host yok).
 
+### Kalan (açık — harici ortam gerektiriyor)
+- ⏳ **Windows'ta canlı SSH oturumu uçtan uca doğrulaması.** Kod tarafı hazır ve cross-compile/vet/otomatik smoke test temiz; yalnızca **gerçek bir Windows host** gerektiren canlı akış elle çalıştırılmalı. Adımlar `scripts/verify-windows.ps1`'in sonundaki kontrol listesinde (PostgreSQL + OpenSSH sshd kurulumu, enroll-bundle ile agent servisi, erişim kuralı, `ssh` ile bağlanıp `administrators_authorized_keys`'e anahtar yazımı + oturum kaydı, canlı izleme/replay, süre dolumunda kapanma, SIGWINCH/pencere yeniden boyutlandırma). Bu geliştirme ortamında (Linux) Windows binary'si çalıştırılamadığından yapılamıyor.
+
 ---
 
 ## ⚠️ Kalan Eksikler / Bilinen Riskler
