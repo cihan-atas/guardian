@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -244,7 +245,7 @@ func parseFlagsAndStartSession(config *Config, width, height int) (int, int, *ti
 	return *ruleID, sessionID, validUntil
 }
 
-func connectWebSocket(sessionID int, config *Config) *websocket.Conn {
+func connectWebSocket(sessionID int, config *Config) *wsConn {
 	wsURL := fmt.Sprintf("%s:%s/api/agent/ws/sessions/%d", strings.Replace(config.ServerHost, "https", "wss", 1), config.ServerPort, sessionID)
 	dialer := websocket.Dialer{TLSClientConfig: createApiClient().Transport.(*http.Transport).TLSClientConfig}
 	ws, _, err := dialer.Dial(wsURL, http.Header{"Authorization": {"Bearer " + config.SecretToken}})
@@ -252,7 +253,7 @@ func connectWebSocket(sessionID int, config *Config) *websocket.Conn {
 		endSessionOnServer(sessionID, "error_ws_connect", config)
 		log.Fatalf("Kayıt için WebSocket bağlantısı kurulamadı: %v", err)
 	}
-	return ws
+	return newWSConn(ws)
 }
 
 func connectSSH(config *Config) *ssh.Client {
@@ -336,7 +337,7 @@ func getTerminalSize() (width, height int) {
 	return width, height
 }
 
-func setupPipes(session *ssh.Session, ws *websocket.Conn, width, height int) {
+func setupPipes(session *ssh.Session, ws *wsConn, width, height int) {
 	wsOutputWriter := &websocketWriter{conn: ws, eventType: "output"}
 	session.Stdout = io.MultiWriter(os.Stdout, wsOutputWriter)
 	session.Stderr = io.MultiWriter(os.Stderr, wsOutputWriter)
@@ -571,8 +572,29 @@ func createApiClient() *http.Client {
 	}
 }
 
+// wsConn, tek bir WebSocket bağlantısına eşzamanlı GÜVENLİ yazım sağlar.
+// gorilla/websocket aynı anda yalnızca tek yazıcıya izin verir; oysa proxy
+// modunda aynı conn'a üç kaynak eşzamanlı yazabilir: kayıt "output" yazıcısı
+// (uzak shell çıktısı), "input" yazıcısı (istemci girişi) ve heartbeat döngüsü.
+// Yazımları mutex ile serileştirerek "concurrent write to websocket connection"
+// panic'ini önler.
+type wsConn struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
+func newWSConn(conn *websocket.Conn) *wsConn { return &wsConn{conn: conn} }
+
+func (c *wsConn) WriteJSON(v interface{}) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn.WriteJSON(v)
+}
+
+func (c *wsConn) Close() error { return c.conn.Close() }
+
 type websocketWriter struct {
-	conn      *websocket.Conn
+	conn      *wsConn
 	eventType string
 }
 
@@ -620,7 +642,7 @@ func handleValidateUser(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Kullanıcı '%s' geçerli.", payload.Username)
 }
 
-func sendHeartbeats(conn *websocket.Conn, sessionID int) {
+func sendHeartbeats(conn *wsConn, sessionID int) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 

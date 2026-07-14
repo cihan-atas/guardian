@@ -44,7 +44,7 @@ func TestWebsocketWriter_Write(t *testing.T) {
 	}
 	defer conn.Close()
 
-	writer := &websocketWriter{conn: conn, eventType: "output"}
+	writer := &websocketWriter{conn: newWSConn(conn), eventType: "output"}
 	payload := []byte("merhaba dünya")
 	n, err := writer.Write(payload)
 	if err != nil {
